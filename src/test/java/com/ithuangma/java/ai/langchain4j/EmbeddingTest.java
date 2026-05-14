@@ -10,16 +10,22 @@ import dev.langchain4j.store.embedding.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 @SpringBootTest
+@ContextConfiguration(classes = {
+        com.ithuangma.java.ai.langchain4j.Config.DashScopeConfig.class,
+        com.ithuangma.java.ai.langchain4j.Config.EmbeddingStoreConfig.class
+})
 public class EmbeddingTest {
 @Autowired
 private EmbeddingModel embeddingModel;
 @Autowired
-private EmbeddingStore embeddingStore;
+private EmbeddingStore<TextSegment> embeddingStore;
 @Test
 public void testEmbeddingModel(){
     Response<Embedding> embed = embeddingModel.embed("你好");
@@ -80,5 +86,95 @@ public void testEmbeddingModel(){
                 .embeddingModel(embeddingModel)
                 .build()
                 .ingest(documents);
+    }
+
+    @Test
+    public void testUploadAndSearchShoppingKnowledge() {
+        // 先上传
+        Document document1 = FileSystemDocumentLoader.loadDocument("E:/knowledge/shopping/商品分类信息.md");
+        Document document2 = FileSystemDocumentLoader.loadDocument("E:/knowledge/shopping/热销商品信息.md");
+        Document document3 = FileSystemDocumentLoader.loadDocument("E:/knowledge/shopping/购物指南.md");
+        Document document4 = FileSystemDocumentLoader.loadDocument("E:/knowledge/shopping/退货政策.md");
+        List<Document> documents = Arrays.asList(document1, document2, document3, document4);
+        EmbeddingStoreIngestor
+                .builder()
+                .embeddingStore(embeddingStore)
+                .embeddingModel(embeddingModel)
+                .build()
+                .ingest(documents);
+        System.out.println("上传完成，共 " + documents.size() + " 个文档。");
+
+        // 再搜索
+        Embedding queryEmbedding = embeddingModel.embed("推荐一款笔记本电脑").content();
+        EmbeddingSearchRequest searchRequest = EmbeddingSearchRequest.builder()
+                .queryEmbedding(queryEmbedding)
+                .maxResults(3)
+                .minScore(0.0)
+                .build();
+        EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(searchRequest);
+        System.out.println("搜索结果数量：" + searchResult.matches().size());
+        for (EmbeddingMatch<TextSegment> match : searchResult.matches()) {
+            System.out.println("得分：" + match.score());
+            System.out.println("内容：" + match.embedded().text().substring(0, Math.min(100, match.embedded().text().length())) + "...");
+            System.out.println("---");
+        }
+    }
+    @Test
+    public void testUploadLoveKnowledge() {
+        Document document1 = FileSystemDocumentLoader.loadDocument("E:/knowledge/恋爱/恋爱心理学.md");
+        List<Document> documents = Collections.singletonList(document1);
+
+        EmbeddingStoreIngestor
+                .builder()
+                .embeddingStore(embeddingStore)
+                .embeddingModel(embeddingModel)
+                .build()
+                .ingest(documents);
+
+        System.out.println("恋爱知识库文档入库完成！共 " + documents.size() + " 个文档。");
+    }
+    @Test
+    public void testSearchLoveKnowledge() {
+        Embedding queryEmbedding = embeddingModel.embed("恋爱心理学").content();
+        EmbeddingSearchRequest searchRequest = EmbeddingSearchRequest.builder()
+                .queryEmbedding(queryEmbedding)
+                .maxResults(3)
+                .build();
+        EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(searchRequest);
+        for (EmbeddingMatch<TextSegment> match : searchResult.matches()) {
+            System.out.println("得分：" + match.score());
+            System.out.println("内容：" + match.embedded().text());
+            System.out.println("---");
+        }
+    }
+
+    @Test
+    public void testUploadLearningKnowledge() {
+        Document document1 = FileSystemDocumentLoader.loadDocument("E:/knowledge/学习/学习助手.md");
+        List<Document> documents = Collections.singletonList(document1);
+
+        EmbeddingStoreIngestor
+                .builder()
+                .embeddingStore(embeddingStore)
+                .embeddingModel(embeddingModel)
+                .build()
+                .ingest(documents);
+
+        System.out.println("学习知识库文档入库完成！共 " + documents.size() + " 个文档。");
+    }
+
+    @Test
+    public void testSearchLearningKnowledge() {
+        Embedding queryEmbedding = embeddingModel.embed("高效学习方法").content();
+        EmbeddingSearchRequest searchRequest = EmbeddingSearchRequest.builder()
+                .queryEmbedding(queryEmbedding)
+                .maxResults(3)
+                .build();
+        EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(searchRequest);
+        for (EmbeddingMatch<TextSegment> match : searchResult.matches()) {
+            System.out.println("得分：" + match.score());
+            System.out.println("内容：" + match.embedded().text());
+            System.out.println("---");
+        }
     }
 }
