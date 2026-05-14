@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ithuangma.java.ai.langchain4j.mapper.StatisticsMapper">
+
+    <resultMap id="BaseResultMap" type="com.ithuangma.java.ai.langchain4j.entity.Statistics">
+        <id column="id" property="id" />
+        <result column="statistics_type" property="statisticsType" />
+        <result column="api_type" property="apiType" />
+        <result column="statistics_date" property="statisticsDate" />
+        <result column="count" property="count" />
+        <result column="create_time" property="createTime" />
+        <result column="update_time" property="updateTime" />
+    </resultMap>
+
+    <select id="selectByDateRange" resultType="map">
+        SELECT
+        DATE_FORMAT(statistics_date, '%Y-%m-%d') as date,
+        count as count
+        FROM statistics
+        WHERE statistics_type = #{statisticsType}
+        <if test="apiType != null and apiType != ''">
+            AND api_type = #{apiType}
+        </if>
+        AND statistics_date BETWEEN #{startDate} AND #{endDate}
+        ORDER BY statistics_date ASC
+    </select>
+
+    <select id="selectByDateGroup" resultType="map">
+        SELECT
+        DATE_FORMAT(statistics_date, '%Y-%m-%d') as date,
+        SUM(count) as count
+        FROM statistics
+        WHERE statistics_type = #{statisticsType}
+        <if test="apiType != null and apiType != ''">
+            AND api_type = #{apiType}
+        </if>
+        AND statistics_date BETWEEN #{startDate} AND #{endDate}
+        GROUP BY DATE_FORMAT(statistics_date, '%Y-%m-%d')
+        ORDER BY statistics_date ASC
+    </select>
+
+</mapper>

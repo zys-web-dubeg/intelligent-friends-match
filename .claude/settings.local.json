@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(mvn dependency:tree -Dincludes=dev.langchain4j:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "mcp__ide__getDiagnostics",
+      "Bash(mvn test *)",
+      "Bash(curl -s -o /dev/null -w \"HTTP_CODE:%{http_code} TIME:%{time_total}s\" https://api.pinecone.io/ --max-time 10)",
+      "Bash(echo \"FAILED: $?\")",
+      "Bash(nslookup api.pinecone.io)",
+      "Bash(powershell -Command \"Resolve-DnsName api.pinecone.io -Type A | Select-Object IPAddress\")",
+      "Bash(powershell -Command \"Resolve-DnsName api.pinecone.io -Type AAAA | Select-Object IPAddress\")",
+      "Bash(jar tf *)",
+      "Bash(mvn dependency:tree -f E:/java-ai-langchain4j/pom.xml)",
+      "Bash(java -XshowSettings:properties -version)",
+      "Bash(powershell *)",
+      "Bash(mvn dependency:build-classpath -f E:/java-ai-langchain4j/pom.xml)",
+      "Bash(unzip -l \"D:\\\\develep\\\\apache-maven-3.9.4-bin\\\\apache-maven-3.9.4\\\\mvn_repo/dev/langchain4j/langchain4j-pinecone/1.0.0-beta3/langchain4j-pinecone-1.0.0-beta3.jar\")",
+      "Bash(cd /tmp)",
+      "Bash(unzip -o \"D:\\\\develep\\\\apache-maven-3.9.4-bin\\\\apache-maven-3.9.4\\\\mvn_repo/dev/langchain4j/langchain4j-pinecone/1.0.0-beta3/langchain4j-pinecone-1.0.0-beta3.jar\" \"dev/langchain4j/store/embedding/pinecone/*\")",
+      "Bash(javap -c -p dev/langchain4j/store/embedding/pinecone/PineconeEmbeddingStore.class)",
+      "Bash(javap -c -p -verbose /tmp/dev/langchain4j/store/embedding/pinecone/PineconeEmbeddingStore.class)",
+      "Bash(unzip -o \"D:\\\\develep\\\\apache-maven-3.9.4-bin\\\\apache-maven-3.9.4\\\\mvn_repo/io/pinecone/pinecone-client/3.1.0/pinecone-client-3.1.0.jar\" \"io/pinecone/clients/Pinecone.class\" -d /tmp/pinecone)",
+      "Bash(javap -c -p /tmp/pinecone/io/pinecone/clients/Pinecone.class)",
+      "Read(//tmp/**)",
+      "Read(//c/tmp/**)",
+      "Read(//d/tmp/**)",
+      "Bash(find /tmp -name \"*.class\")",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 *)",
+      "Bash(PINECONE_DEBUG=true mvn spring-boot:run -q)",
+      "Bash(kill %1)",
+      "Bash(wait)",
+      "Bash(PINECONE_DEBUG=true mvn compile exec:java -Dexec.mainClass=\"com.ithuangma.java.ai.langchain4j.AIAssistantApp\")"
+    ]
+  }
+}
