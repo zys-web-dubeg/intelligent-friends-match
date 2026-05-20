@@ -20,7 +20,7 @@ public class TeamChatAssistantConfig {
     public ChatLanguageModel teamChatModel() {
         return OllamaChatModel.builder()
                 .baseUrl("http://localhost:11434")
-                .modelName("llama3.1")
+                .modelName("qwen2.5-coder:latest")
                 .temperature(0.7) // 稍微提高温度，使AI回复更多样化
                 .build();
     }

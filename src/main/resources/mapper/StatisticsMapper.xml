@@ -36,7 +36,7 @@
         </if>
         AND statistics_date BETWEEN #{startDate} AND #{endDate}
         GROUP BY DATE_FORMAT(statistics_date, '%Y-%m-%d')
-        ORDER BY statistics_date ASC
+        ORDER BY DATE_FORMAT(statistics_date, '%Y-%m-%d') ASC
     </select>
 
 </mapper>

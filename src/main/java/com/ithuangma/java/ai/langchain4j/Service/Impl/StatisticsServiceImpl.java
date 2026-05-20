@@ -258,6 +258,11 @@ public class StatisticsServiceImpl implements StatisticsService {
         result.put("startDate", startDate.toString());
         result.put("endDate", endDate.toString());
 
+        // 添加按天分组的详细数据
+        result.put("userRegistrationData", buildDailyDataList("user_register", null, startDate, endDate));
+        result.put("apiRequestData", buildDailyDataList("api_request", null, startDate, endDate));
+        result.put("comparisonData", buildComparisonDataList(startDate, endDate));
+
         return result;
     }
 
@@ -307,5 +312,68 @@ public class StatisticsServiceImpl implements StatisticsService {
             case "xiaozhi": return "硅谷小智";
             default: return "未知智能体";
         }
+    }
+
+    /**
+     * 构建按天分组的数据列表
+     */
+    private List<Map<String, Object>> buildDailyDataList(String statisticsType, String apiType, LocalDate startDate, LocalDate endDate) {
+        List<Map<String, Object>> data = statisticsMapper.selectByDateGroup(
+                statisticsType,
+                apiType,
+                startDate.atStartOfDay(),
+                endDate.atTime(LocalTime.MAX)
+        );
+
+        // 将数据转换为Map以便快速查找
+        Map<String, Integer> dateCountMap = data.stream()
+                .collect(Collectors.toMap(
+                        item -> (String) item.get("date"),
+                        item -> ((Number) item.get("count")).intValue(),
+                        Integer::sum
+                ));
+
+        // 生成完整的日期列表，确保没有数据的日期也有0值
+        List<String> allDates = generateDateList(startDate, endDate);
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (String date : allDates) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("date", date);
+            item.put("count", dateCountMap.getOrDefault(date, 0));
+            result.add(item);
+        }
+
+        return result;
+    }
+
+    /**
+     * 构建对比数据列表（用户注册 + API请求）
+     */
+    private List<Map<String, Object>> buildComparisonDataList(LocalDate startDate, LocalDate endDate) {
+        // 获取用户注册数据
+        List<Map<String, Object>> userRegData = buildDailyDataList("user_register", null, startDate, endDate);
+        // 获取API请求数据
+        List<Map<String, Object>> apiReqData = buildDailyDataList("api_request", null, startDate, endDate);
+
+        // 将API数据转换为Map以便快速查找
+        Map<String, Integer> apiCountMap = apiReqData.stream()
+                .collect(Collectors.toMap(
+                        item -> (String) item.get("date"),
+                        item -> ((Number) item.get("count")).intValue()
+                ));
+
+        // 合并数据
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> userItem : userRegData) {
+            String date = (String) userItem.get("date");
+            Map<String, Object> comparisonItem = new HashMap<>();
+            comparisonItem.put("date", date);
+            comparisonItem.put("userCount", userItem.get("count"));
+            comparisonItem.put("apiCount", apiCountMap.getOrDefault(date, 0));
+            result.add(comparisonItem);
+        }
+
+        return result;
     }
 }

@@ -42,7 +42,7 @@ public class UserProfileVectorInitializer implements CommandLineRunner {
             try {
                 String userIdStr = profile.getUserId().toString();
                 
-                // 构建描述
+                // 构建用户画像描述（与正式存储时使用相同的描述）
                 StringBuilder sb = new StringBuilder();
                 sb.append("用户画像信息：\n");
                 if (profile.getMbtiType() != null) sb.append("MBTI类型：").append(profile.getMbtiType()).append("\n");
@@ -54,22 +54,51 @@ public class UserProfileVectorInitializer implements CommandLineRunner {
                 
                 String description = sb.toString();
                 
+                // 1. 先检查是否已经存在该用户的向量（使用实际的用户画像描述进行搜索）
+                Embedding queryEmbedding = embeddingModel.embed(description).content();
+                
+                var searchRequest = EmbeddingSearchRequest.builder()
+                        .queryEmbedding(queryEmbedding)
+                        .minScore(0.95)  // 提高阈值，确保找到完全相同的记录
+                        .maxResults(10)  // 增加搜索数量
+                        .build();
+                
+                // 执行搜索并手动过滤
+                var result = embeddingStore.search(searchRequest);
+                boolean exists = false;
+                for (EmbeddingMatch<TextSegment> match : result.matches()) {
+                    if (match.embedded() != null && match.embedded().metadata() != null) {
+                        String existingUserId = match.embedded().metadata().getString("user_id");
+                        if (userIdStr.equals(existingUserId)) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // 如果已经存在，则跳过
+                if (exists) {
+                    System.out.println("- 用户 [" + profile.getUserId() + "] 已存在，跳过索引");
+                    continue;
+                }
+                
                 // 创建元数据，必须包含 type 标记
                 Metadata metadata = new Metadata();
                 metadata.put("user_id", userIdStr);
                 metadata.put("type", "user"); // 关键：添加 type 标记
-                
+
+                //创建 TextSegment（将文本和元数据绑定）
                 TextSegment textSegment = TextSegment.from(description, metadata);
                 Embedding embedding = embeddingModel.embed(textSegment).content();
 
-                // 存储到向量数据库（使用 upsert 方式，如果存在则更新）
+                // 存储到向量数据库
                 embeddingStore.add(embedding, textSegment);
                 
                 System.out.println("✓ 用户 [" + profile.getUserId() + "] 向量索引成功");
                 successCount++;
             } catch (Exception e) {
                 System.err.println("✗ 用户 [" + profile.getUserId() + "] 向量索引失败: " + e.getMessage());
-                e.printStackTrace();
+                // 不打印完整堆栈，避免日志过多
             }
         }
         

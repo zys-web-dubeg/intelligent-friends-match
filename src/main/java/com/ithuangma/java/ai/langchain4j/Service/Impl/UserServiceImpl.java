@@ -26,24 +26,24 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     public User login(String username, String password) {
         // 校验参数非空
         if (StringUtils.isAnyBlank(username, password)) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
+            throw new BusinessException("用户名和密码不能为空", ErrorCode.PARAMS_ERROR.getCode(), "登录参数为空");
         }
-        
+            
         // 验证用户名长度
         if (username.length() < 2) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户名过短");
+            throw new BusinessException("用户名至少2个字符", ErrorCode.PARAMS_ERROR.getCode(), "用户名长度不足");
         }
-        
+            
         // 验证密码长度
         if (password.length() < 6) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户密码过短");
+            throw new BusinessException("密码至少6个字符", ErrorCode.PARAMS_ERROR.getCode(), "密码长度不足");
         }
-        
+            
         // 验证用户名不能包含特殊字符
         String validPattern = "[`~!@#$%^&*()+=|{}':;',\\\\[\\\\].<>/?~！@#￥%……&*（）——+|{}【】‘；：”“’。，、？]";
         Matcher matcher = Pattern.compile(validPattern).matcher(username);
         if (matcher.find()) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户名包含特殊字符");
+            throw new BusinessException("用户名只能包含字母、数字和下划线", ErrorCode.PARAMS_ERROR.getCode(), "用户名包含非法字符");
         }
             
         // 对输入的密码进行加密
@@ -52,12 +52,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(User::getUsername, username);
         User user = getOne(queryWrapper);
+        
+        // 为了安全，不泄露用户是否存在，统一返回用户名或密码错误
         if (user == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在");
+            throw new BusinessException("用户名或密码错误", ErrorCode.AUTH_ERROR.getCode(), "用户不存在");
         }
+        
         // 比较加密后的密码
         if (!user.getPassword().equals(encryptedInputPassword)) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码错误");
+            throw new BusinessException("用户名或密码错误", ErrorCode.AUTH_ERROR.getCode(), "密码不正确");
         }
         return user;
     }
@@ -66,33 +69,33 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     public User register(String username, String password, String phone, String email) {
         // 校验参数非空
         if (StringUtils.isAnyBlank(username, password, phone, email)) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
+            throw new BusinessException("所有字段都不能为空", ErrorCode.PARAMS_ERROR.getCode(), "注册参数为空");
         }
-        
+            
         // 验证用户名长度
-        if (username.length() < 4) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户名过短");
+        if (username.length() < 2) {
+            throw new BusinessException("用户名至少2个字符", ErrorCode.PARAMS_ERROR.getCode(), "用户名长度不足");
         }
-        
+            
         // 验证密码长度
-        if (password.length() < 8) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户密码过短");
+        if (password.length() < 6) {
+            throw new BusinessException("密码至少6个字符", ErrorCode.PARAMS_ERROR.getCode(), "密码长度不足");
         }
-        
+            
         // 验证手机号和邮箱格式
         if (phone != null && !isValidPhone(phone)) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "手机号格式错误");
+            throw new BusinessException("手机号格式不正确", ErrorCode.PARAMS_ERROR.getCode(), "无效的手机号格式");
         }
-        
+            
         if (email != null && !isValidEmail(email)) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱格式错误");
+            throw new BusinessException("邮箱格式不正确", ErrorCode.PARAMS_ERROR.getCode(), "无效的邮箱格式");
         }
-        
+            
         // 验证用户名不能包含特殊字符
         String validPattern = "[`~!@#$%^&*()+=|{}':;',\\\\[\\\\].<>/?~！@#￥%……&*（）——+|{}【】‘；：”“’。，、？]";
         Matcher matcher = Pattern.compile(validPattern).matcher(username);
         if (matcher.find()) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户名包含特殊字符");
+            throw new BusinessException("用户名只能包含字母、数字和下划线", ErrorCode.PARAMS_ERROR.getCode(), "用户名包含非法字符");
         }
             
         // 检查用户名是否已存在
@@ -100,7 +103,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         queryWrapper.eq(User::getUsername, username);
         User existUser = getOne(queryWrapper);
         if (existUser != null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户名已存在");
+            throw new BusinessException("该用户名已被注册", ErrorCode.PARAMS_ERROR.getCode(), "用户名重复");
         }
             
         // 对密码进行加密

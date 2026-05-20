@@ -56,34 +56,37 @@ public class ChatHistoryController {
         }
     }
 
-    // 获取特定用户与AI的私聊记录
+    // 更准确的实现
     @GetMapping("/user/{userId}/ai/{aiId}")
     public Result getUserAiChatHistory(@PathVariable String userId,
                                        @PathVariable String aiId,
                                        @RequestParam(defaultValue = "0") int page,
                                        @RequestParam(defaultValue = "20") int size) {
         try {
-            // 构建查询条件，查找包含特定用户和AI的会话
-            Query query = new Query(Criteria.where("participants").all(userId, aiId));
+            // 查找该用户的所有聊天会话（sessionId可能与用户相关）
+            // 在实际应用中，memoryId可能是用户ID或基于用户ID生成的
+            Query query = new Query(Criteria.where("sessionId").regex(userId + ".*")); // 匹配以userId开头的sessionId
             query.with(Sort.by(Sort.Direction.DESC, "lastActiveTime"));
             query.skip(page * size);
             query.limit(size);
-            
+
             List<ChatSession> sessions = mongoTemplate.find(query, ChatSession.class, "chat_sessions");
-            
+
             // 合并所有相关消息
             java.util.List<ChatMessage> allMessages = new java.util.ArrayList<>();
             for (ChatSession session : sessions) {
                 if (session.getMessages() != null) {
+                    // 可以根据需要过滤特定AI的消息
                     allMessages.addAll(session.getMessages());
                 }
             }
-            
+
             // 按时间排序
-            allMessages.sort((m1, m2) -> m1.getTimestamp().compareTo(m2.getTimestamp()));
-            
+            allMessages.sort(java.util.Comparator.comparing(ChatMessage::getTimestamp));
+
             return Result.ok(allMessages);
         } catch (Exception e) {
+            e.printStackTrace();
             return Result.fail(500, "获取聊天记录失败: " + e.getMessage());
         }
     }

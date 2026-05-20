@@ -1,5 +1,6 @@
 package com.ithuangma.java.ai.langchain4j.websocket;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ithuangma.java.ai.langchain4j.Story.ChatMessage;
 import com.ithuangma.java.ai.langchain4j.Story.ChatSession;
@@ -94,68 +95,14 @@ public class TeamChatWebSocket {
         try {
             ChatMessageDto chatMessage = objectMapper.readValue(message, ChatMessageDto.class);
 
-            // 构建完整的聊天消息
-            ChatMessage dbMessage = ChatMessage.builder()
-                    .senderId(userId)
-                    .senderType("HUMAN") // 标识是人类用户发送的
-                    .content(chatMessage.getContent())
-                    .timestamp(new java.util.Date())
-                    .build();
-
-            // 检查会话是否存在，如果不存在则创建
-            ChatSession chatSession = mongoTemplate.findById(teamId, ChatSession.class, "chat_sessions");
-            if (chatSession == null) {
-                // 创建新的会话
-                chatSession = ChatSession.builder()
-                        .id(teamId)
-                        .sessionId(teamId)
-                        .type("GROUP")
-                        .teamId(teamId)
-                        .messages(java.util.Collections.singletonList(dbMessage))
-                        .lastActiveTime(new java.util.Date())
-                        .build();
-                mongoTemplate.save(chatSession, "chat_sessions");
+            // 根据消息类型进行不同处理
+            if ("AI_TRIGGER".equals(chatMessage.getType())) {
+                // 处理AI触发消息
+                handleAITrigger(chatMessage.getContent());
             } else {
-                // 添加消息到现有会话
-                chatSession.getMessages().add(dbMessage);
-                chatSession.setLastActiveTime(new java.util.Date());
-                mongoTemplate.save(chatSession, "chat_sessions");
+                // 处理普通消息
+                handleNormalMessage(chatMessage);
             }
-
-            // 向队伍中的所有成员广播消息
-            broadcastToTeam(teamId, userId, chatMessage.getContent(), dbMessage.getTimestamp());
-
-            // 检查是否需要AI参与（例如，消息中包含特定关键词）
-            if (shouldAIParticipate(chatMessage.getContent())) {
-                // 异步生成AI回复，避免阻塞当前消息处理
-                final ChatSession finalChatSession = chatSession;
-                final String userContent = chatMessage.getContent();
-                java.util.concurrent.CompletableFuture.runAsync(() -> {
-                    try {
-                        TeamChatAssistant teamChatAssistant = SpringContextUtil.getBean(TeamChatAssistant.class);
-                        if (teamChatAssistant != null) {
-                            String aiReply = teamChatAssistant.generateTeamReply(teamId, "ai_assistant", userContent);
-
-                            ChatMessage aiMessage = ChatMessage.builder()
-                                    .senderId("ai_assistant")
-                                    .senderType("AI")
-                                    .content(aiReply)
-                                    .timestamp(new java.util.Date())
-                                    .build();
-
-                            finalChatSession.getMessages().add(aiMessage);
-                            finalChatSession.setLastActiveTime(new java.util.Date());
-                            mongoTemplate.save(finalChatSession, "chat_sessions");
-
-                            sendAimessageToTeam(teamId, "AI助手: " + aiReply);
-                        }
-                    } catch (Exception e) {
-                        System.err.println("AI回复生成失败: " + e.getMessage());
-                        e.printStackTrace();
-                    }
-                });
-            }
-
         } catch (Exception e) {
             e.printStackTrace();
             try {
@@ -166,6 +113,91 @@ public class TeamChatWebSocket {
             } catch (Exception ignored) {
             }
         }
+    }
+
+    // 处理普通消息
+    private void handleNormalMessage(ChatMessageDto chatMessage) throws Exception {
+        // 构建完整的聊天消息
+        ChatMessage dbMessage = ChatMessage.builder()
+                .senderId(userId)
+                .senderType("HUMAN") // 标识是人类用户发送的
+                .content(chatMessage.getContent())
+                .timestamp(new java.util.Date())
+                .build();
+
+        // 检查会话是否存在，如果不存在则创建
+        ChatSession chatSession = mongoTemplate.findById(teamId, ChatSession.class, "chat_sessions");
+        if (chatSession == null) {
+            // 创建新的会话
+            chatSession = ChatSession.builder()
+                    .id(teamId)
+                    .sessionId(teamId)
+                    .type("GROUP")
+                    .teamId(teamId)
+                    .messages(java.util.Collections.singletonList(dbMessage))
+                    .lastActiveTime(new java.util.Date())
+                    .build();
+            mongoTemplate.save(chatSession, "chat_sessions");
+        } else {
+            // 添加消息到现有会话
+            chatSession.getMessages().add(dbMessage);
+            chatSession.setLastActiveTime(new java.util.Date());
+            mongoTemplate.save(chatSession, "chat_sessions");
+        }
+
+        // 向队伍中的所有成员广播消息
+        broadcastToTeam(teamId, userId, chatMessage.getContent(), dbMessage.getTimestamp());
+
+        // 检查是否需要AI参与（例如，消息中包含特定关键词）
+        if (shouldAIParticipate(chatMessage.getContent())) {
+            // 异步生成AI回复，避免阻塞当前消息处理
+            handleAITrigger(chatMessage.getContent());
+        }
+    }
+
+    // 处理AI触发
+    private void handleAITrigger(String content) {
+        ChatSession chatSession = mongoTemplate.findById(teamId, ChatSession.class, "chat_sessions");
+        if (chatSession == null) {
+            // 如果没有会话，创建一个空会话
+            chatSession = ChatSession.builder()
+                    .id(teamId)
+                    .sessionId(teamId)
+                    .type("GROUP")
+                    .teamId(teamId)
+                    .messages(new java.util.ArrayList<>())
+                    .lastActiveTime(new java.util.Date())
+                    .build();
+            mongoTemplate.save(chatSession, "chat_sessions");
+        }
+
+        // 异步生成AI回复，避免阻塞当前消息处理
+        final ChatSession finalChatSession = chatSession;
+        final String userContent = content;
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                TeamChatAssistant teamChatAssistant = SpringContextUtil.getBean(TeamChatAssistant.class);
+                if (teamChatAssistant != null) {
+                    String aiReply = teamChatAssistant.generateTeamReply(teamId, "ai_assistant", userContent);
+
+                    ChatMessage aiMessage = ChatMessage.builder()
+                            .senderId("ai_assistant")
+                            .senderType("AI")
+                            .content(aiReply)
+                            .timestamp(new java.util.Date())
+                            .build();
+
+                    finalChatSession.getMessages().add(aiMessage);
+                    finalChatSession.setLastActiveTime(new java.util.Date());
+                    mongoTemplate.save(finalChatSession, "chat_sessions");
+
+                    sendAimessageToTeam(teamId, "AI助手: " + aiReply);
+                }
+            } catch (Exception e) {
+                System.err.println("AI回复生成失败: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
     }
 
     @OnError
@@ -274,8 +306,12 @@ public class TeamChatWebSocket {
     }
 
     // 用于反序列化前端发送的消息
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ChatMessageDto {
         private String content;
+        private String type;
+        private String teamId;
 
         public String getContent() {
             return content;
@@ -283,6 +319,22 @@ public class TeamChatWebSocket {
 
         public void setContent(String content) {
             this.content = content;
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public void setType(String type) {
+            this.type = type;
+        }
+
+        public String getTeamId() {
+            return teamId;
+        }
+
+        public void setTeamId(String teamId) {
+            this.teamId = teamId;
         }
     }
 }

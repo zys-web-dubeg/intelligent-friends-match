@@ -17,7 +17,7 @@ public class UserProfileController {
 
     @Autowired
     private UserProfileService userProfileService;
-    
+
     @Autowired
     private TeamService teamService;
 
@@ -82,7 +82,7 @@ public class UserProfileController {
 
     // 查找相似用户
     @GetMapping("/{userId}/similar-users")
-    public Result findSimilarUsers(@PathVariable Long userId, 
+    public Result findSimilarUsers(@PathVariable Long userId,
                                    @RequestParam(defaultValue = "5") int limit) {
         try {
             List<UserProfile> similarUsers = userProfileService.findSimilarUsers(userId, limit);
@@ -97,16 +97,53 @@ public class UserProfileController {
     public Result findSuitableTeams(@PathVariable Long userId) {
         try {
             List<Long> suitableTeamIds = userProfileService.findSuitableTeamsByProfile(userId);
-            
+
             // 将ID列表转换为完整的队伍信息对象
             List<TeamProfile> suitableTeams = suitableTeamIds.stream()
                     .map(teamId -> teamService.getTeamById(teamId))
                     .filter(team -> team != null)
                     .collect(Collectors.toList());
-            
+
             return Result.ok(suitableTeams);
         } catch (Exception e) {
             return Result.fail(500, "查找适合的队伍失败: " + e.getMessage());
         }
+    }
+
+    // 更新用户头像
+    @PutMapping("/{userId}/avatar")
+    public Result updateAvatar(@PathVariable Long userId, @RequestBody String avatarUrl) {
+        try {
+            // 校验URL格式
+            if (avatarUrl != null && !isValidImageUrl(avatarUrl)) {
+                return Result.fail(400, "头像URL格式不正确");
+            }
+
+            UserProfile profile = userProfileService.getUserProfileByUserId(userId);
+            if (profile == null) {
+                profile = UserProfile.builder()
+                        .userId(userId)
+                        .avatar(avatarUrl)
+                        .build();
+            } else {
+                profile.setAvatar(avatarUrl);
+            }
+            UserProfile savedProfile = userProfileService.saveUserProfile(profile);
+            return Result.ok(savedProfile);
+        } catch (Exception e) {
+            return Result.fail(500, "更新头像失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 校验图片URL格式
+     */
+    private boolean isValidImageUrl(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return true; // 允许空值（清空头像）
+        }
+
+        // 简单的URL格式校验
+        return url.startsWith("http://") || url.startsWith("https://");
     }
 }

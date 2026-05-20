@@ -31,4 +31,6 @@ public class UserProfile {
     private String personalityTraits; // 性格特征
 
     private String communicationStyle; // 沟通风格
+
+    private String avatar; // 用户头像URL
 }

@@ -16,6 +16,8 @@ import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingSearchResult;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import dev.langchain4j.store.embedding.EmbeddingStore;
+import com.ithuangma.java.ai.langchain4j.matching.MatchResult;
+import com.ithuangma.java.ai.langchain4j.matching.MultiDimensionMatcher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -42,6 +44,9 @@ public class UserProfileServiceImpl implements UserProfileService {
 
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private MultiDimensionMatcher multiDimensionMatcher;
 
     private static final String USER_PROFILE_TEAM_RECOMMENDATION_CACHE_PREFIX = "user:profile:team:recommendation:user:";
     private static final String USER_SIMILARITY_CACHE_PREFIX = "user:similarity:users:user:";
@@ -153,75 +158,74 @@ public class UserProfileServiceImpl implements UserProfileService {
     }
 
     /**
-     * 计算相似用户
+     * 计算相似用户（多维加权评分）
      */
     private List<UserProfile> calculateSimilarUsers(Long userId, int limit) {
-        System.out.println("=== 开始查找相似用户 ===");
+        System.out.println("=== 开始查找相似用户 (多维评分) ===");
         System.out.println("查询用户ID: " + userId);
-        
+
         UserProfile userProfile = getUserProfileByUserId(userId);
         if (userProfile == null) {
             System.out.println("警告: 用户画像不存在, userId=" + userId);
-            return new java.util.ArrayList<>(); // 返回可序列化的空列表
+            return new java.util.ArrayList<>();
         }
-        System.out.println("用户画像获取成功");
 
         // 构建用户画像描述用于向量化
         String userProfileDescription = buildUserProfileDescription(userProfile);
-        System.out.println("用户画像描述: " + userProfileDescription);
-
-        // 生成嵌入向量
-        System.out.println("正在生成embedding...");
         Embedding queryEmbedding = embeddingModel.embed(userProfileDescription).content();
-        System.out.println("embedding生成完成");
 
-        // 在向量数据库中搜索相似用户
-        System.out.println("正在执行向量搜索...");
+        // 在向量数据库中搜索相似用户，获取更多候选用于多维重排
         EmbeddingSearchRequest searchRequest = EmbeddingSearchRequest.builder()
                 .queryEmbedding(queryEmbedding)
-                .maxResults(limit)
-                .filter(MetadataFilterBuilder.metadataKey("type").isEqualTo("user")) // 只搜索用户
+                .maxResults(limit * 3)  // 获取更多候选
+                .filter(MetadataFilterBuilder.metadataKey("type").isEqualTo("user"))
                 .build();
         EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(searchRequest);
         List<EmbeddingMatch<TextSegment>> matches = searchResult.matches();
-        
-        System.out.println("向量搜索结果数量: " + matches.size());
-        for (int i = 0; i < matches.size(); i++) {
-            EmbeddingMatch<TextSegment> match = matches.get(i);
-            TextSegment embedded = match.embedded();
-            if (embedded != null) {
-                System.out.println("匹配" + (i+1) + " - 相似度: " + match.score());
-                System.out.println("   -> Metadata 原始内容: " + embedded.metadata().toMap());
-                String matchedUserId = embedded.metadata().getString("user_id");
-                System.out.println("   -> 提取到的 user_id: " + matchedUserId);
-            } else {
-                System.out.println("匹配" + (i+1) + " - embedded 为 null");
-            }
-        }
 
-        // 提取匹配的用户ID
-        List<Long> matchedUserIds = matches.stream()
+        System.out.println("候选用户数: " + matches.size());
+
+        // 提取候选用户ID
+        List<Long> candidateIds = matches.stream()
                 .map(match -> {
-                    String userIdStr = match.embedded().metadata().getString("user_id");
-                    try {
-                        return Long.parseLong(userIdStr);
-                    } catch (NumberFormatException e) {
-                        System.err.println("无法解析user_id: " + userIdStr);
-                        return null;
-                    }
+                    TextSegment embedded = match.embedded();
+                    if (embedded == null) return null;
+                    String uid = embedded.metadata().getString("user_id");
+                    if (uid == null || uid.isBlank()) return null;
+                    try { return Long.parseLong(uid); }
+                    catch (NumberFormatException e) { return null; }
                 })
-                .filter(id -> id != null && !id.equals(userId)) // 排除自己
+                .filter(id -> id != null && !id.equals(userId))
                 .distinct()
-                .limit(limit)
                 .collect(Collectors.toList());
 
-        System.out.println("匹配到的用户ID列表: " + matchedUserIds);
+        if (candidateIds.isEmpty()) return new java.util.ArrayList<>();
 
-        // 根据匹配的用户ID获取用户画像
-        List<UserProfile> result = getUserProfilesByUserIds(matchedUserIds);
-        System.out.println("最终返回的相似用户数量: " + (result != null ? result.size() : 0));
-        System.out.println("=== 查找相似用户完成 ===");
-        return result;
+        List<UserProfile> candidates = getUserProfilesByUserIds(candidateIds);
+
+        // 多维评分 + 排序
+        List<ScoredUser> scoredUsers = new java.util.ArrayList<>();
+        for (UserProfile candidate : candidates) {
+            MatchResult result = multiDimensionMatcher.scoreUserSimilarity(userProfile, candidate);
+            scoredUsers.add(new ScoredUser(candidate, result.getOverallScore(), result));
+        }
+
+        scoredUsers.sort((a, b) -> Double.compare(b.score, a.score));
+
+        System.out.println("==== 相似用户排名 ====");
+        for (int i = 0; i < Math.min(limit, scoredUsers.size()); i++) {
+            ScoredUser su = scoredUsers.get(i);
+            System.out.println("第" + (i + 1) + "名: userId=" + su.profile.getUserId()
+                    + " | 综合分: " + String.format("%.2f", su.score));
+            su.result.getDimensionScores().forEach(d ->
+                    System.out.println("    " + d.getName() + ": " + String.format("%.2f", d.getScore())));
+        }
+        System.out.println("======================");
+
+        return scoredUsers.stream()
+                .limit(limit)
+                .map(su -> su.profile)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -272,104 +276,69 @@ public class UserProfileServiceImpl implements UserProfileService {
     }
 
     /**
-     * 计算队伍推荐
+     * 计算队伍推荐（多维加权评分）
      */
     private List<Long> calculateTeamRecommendations(Long userId) {
         long startTime = System.currentTimeMillis();
-        System.out.println("[性能监控] 开始查找适合队伍, userId=" + userId);
+        System.out.println("[性能监控] 开始查找适合队伍 (多维评分), userId=" + userId);
 
         UserProfile userProfile = getUserProfileByUserId(userId);
-        if (userProfile == null) {
-            return List.of();
-        }
-        System.out.println("[性能监控] 查询用户画像完成, 耗时: " + (System.currentTimeMillis() - startTime) + "ms");
+        if (userProfile == null) return List.of();
 
-        // 构建用户画像描述用于向量化
         String userProfileDescription = buildUserProfileDescription(userProfile);
-
-        // 生成嵌入向量
-        long embedStartTime = System.currentTimeMillis();
         Embedding queryEmbedding = embeddingModel.embed(userProfileDescription).content();
-        System.out.println("[性能监控] 生成embedding完成, 耗时: " + (System.currentTimeMillis() - embedStartTime) + "ms");
 
-        // 在向量数据库中搜索匹配的队伍
-        long searchStartTime = System.currentTimeMillis();
-        System.out.println("[性能监控] 开始向量搜索...");
-
+        // 搜索候选队伍，扩大候选池
         EmbeddingSearchRequest searchRequest = EmbeddingSearchRequest.builder()
                 .queryEmbedding(queryEmbedding)
-                .maxResults(5)
-                .minScore(0.5)  // 设置最小相似度阈值
-                .filter(MetadataFilterBuilder.metadataKey("type").isEqualTo("team")) // 关键：只搜队伍
+                .maxResults(15)
+                .minScore(0.4)
+                .filter(MetadataFilterBuilder.metadataKey("type").isEqualTo("team"))
                 .build();
-        System.out.println("[性能监控] 搜索请求已构建，开始执行搜索...");
 
         EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(searchRequest);
-        System.out.println("[性能监控] 搜索执行完成，正在获取结果...");
-
         List<EmbeddingMatch<TextSegment>> matches = searchResult.matches();
-        System.out.println("[性能监控] 向量搜索完成, 耗时: " + (System.currentTimeMillis() - searchStartTime) + "ms, 结果数: " + matches.size());
+        System.out.println("[性能监控] 获取" + matches.size() + "个候选队伍, 耗时: "
+                + (System.currentTimeMillis() - startTime) + "ms");
 
-        System.out.println("=== 队伍推荐调试信息 ===");
-        System.out.println("用户ID: " + userId);
-        System.out.println("向量搜索结果数量: " + matches.size());
-        for (int i = 0; i < matches.size(); i++) {
-            EmbeddingMatch<TextSegment> match = matches.get(i);
+        // 多维评分排序
+        List<ScoredTeam> scoredTeams = new java.util.ArrayList<>();
+        for (EmbeddingMatch<TextSegment> match : matches) {
             TextSegment embedded = match.embedded();
-            if (embedded != null) {
-                // 打印完整的 Metadata 对象，看看里面到底有什么
-                System.out.println("匹配" + (i+1) + " - 相似度: " + match.score());
-                System.out.println("   -> Metadata 原始内容: " + embedded.metadata().toMap());
-                String teamIdStr = embedded.metadata().getString("teamId");
-                System.out.println("   -> 提取到的 teamId: " + teamIdStr);
-            } else {
-                System.out.println("匹配" + (i+1) + " - embedded 为 null");
+            if (embedded == null) continue;
+
+            String teamIdStr = embedded.metadata().getString("teamId");
+            if (teamIdStr == null || teamIdStr.isBlank()) continue;
+
+            try {
+                Long teamId = Long.parseLong(teamIdStr);
+                TeamProfile team = teamProfileMapper.selectById(teamId);
+                if (team == null) continue;
+
+                MatchResult result = multiDimensionMatcher.scoreUserTeamMatch(userProfile, team);
+                scoredTeams.add(new ScoredTeam(teamId, result.getOverallScore(), result));
+
+            } catch (NumberFormatException e) {
+                System.err.println("无法解析teamId: " + teamIdStr);
             }
         }
-        System.out.println("========================");
 
-        // 提取匹配的队伍ID，并进行null检查
-        List<Long> matchedTeamIds = matches.stream()
-                .map(match -> {
-                    TextSegment embedded = match.embedded();
-                    if (embedded == null) {
-                        return null;
-                    }
-                    // 统一使用 "teamId" 作为元数据键名
-                    String teamIdStr = embedded.metadata().getString("teamId");
-                    if (teamIdStr == null || teamIdStr.isEmpty()) {
-                        return null;
-                    }
-                    try {
-                        return Long.parseLong(teamIdStr);
-                    } catch (NumberFormatException e) {
-                        System.err.println("无法解析teamId: " + teamIdStr);
-                        return null;
-                    }
-                })
-                .filter(id -> id != null)
-                .distinct()
-                .collect(Collectors.toList());
+        scoredTeams.sort((a, b) -> Double.compare(b.score, a.score));
 
-        System.out.println("最终推荐的队伍ID列表: " + matchedTeamIds);
-
-        // 验证队伍ID是否在数据库中存在
-        List<Long> validTeamIds = matchedTeamIds.stream()
-                .filter(teamId -> {
-                    TeamProfile team = teamProfileMapper.selectById(teamId);
-                    boolean exists = team != null;
-                    if (!exists) {
-                        System.out.println("警告: 队伍ID " + teamId + " 在数据库中不存在，已过滤");
-                    } else {
-                        System.out.println("确认: 队伍ID " + teamId + " (" + team.getName() + ") 存在");
-                    }
-                    return exists;
-                })
-                .collect(Collectors.toList());
-
-        System.out.println("验证后的有效队伍ID列表: " + validTeamIds);
+        System.out.println("==== 队伍推荐 (多维评分) ====");
+        for (int i = 0; i < Math.min(5, scoredTeams.size()); i++) {
+            ScoredTeam st = scoredTeams.get(i);
+            System.out.println("第" + (i + 1) + "名: teamId=" + st.teamId
+                    + " | 综合分: " + String.format("%.2f", st.score));
+            st.result.getDimensionScores().forEach(d ->
+                    System.out.println("    " + d.getName() + ": " + String.format("%.2f", d.getScore())));
+        }
         System.out.println("[性能监控] 总耗时: " + (System.currentTimeMillis() - startTime) + "ms");
-        return validTeamIds;
+
+        return scoredTeams.stream()
+                .limit(5)
+                .map(st -> st.teamId)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -388,20 +357,18 @@ public class UserProfileServiceImpl implements UserProfileService {
             }
         });
     }
-
     // 将用户画像信息存储到Pinecone向量数据库
     private void storeUserProfileInPinecone(UserProfile userProfile) {
         try {
             String userProfileDescription = buildUserProfileDescription(userProfile);
 
-            // 创建文本段落
-            TextSegment textSegment = TextSegment.from(userProfileDescription);
+            // 创建元数据
+            dev.langchain4j.data.document.Metadata metadata = new dev.langchain4j.data.document.Metadata();
+            metadata.put("user_id", userProfile.getUserId().toString());
+            metadata.put("type", "user"); // 标识这是用户数据
 
-            // 添加元数据
-            textSegment.metadata().put("user_id", userProfile.getUserId().toString());
-            textSegment.metadata().put("mbti_type", userProfile.getMbtiType() != null ? userProfile.getMbtiType() : "");
-            textSegment.metadata().put("tags", userProfile.getTags() != null ? userProfile.getTags() : "");
-            textSegment.metadata().put("type", "user"); // 标识这是用户数据
+            // 创建 TextSegment（将文本和元数据绑定）
+            TextSegment textSegment = TextSegment.from(userProfileDescription, metadata);
 
             // 生成嵌入向量
             Embedding embedding = embeddingModel.embed(textSegment).content();
@@ -411,6 +378,32 @@ public class UserProfileServiceImpl implements UserProfileService {
         } catch (Exception e) {
             e.printStackTrace();
             // 记录错误日志，但不影响主流程
+        }
+    }
+
+    // ==================== 多维评分辅助类 ====================
+
+    private static class ScoredUser {
+        final UserProfile profile;
+        final double score;
+        final MatchResult result;
+
+        ScoredUser(UserProfile profile, double score, MatchResult result) {
+            this.profile = profile;
+            this.score = score;
+            this.result = result;
+        }
+    }
+
+    private static class ScoredTeam {
+        final Long teamId;
+        final double score;
+        final MatchResult result;
+
+        ScoredTeam(Long teamId, double score, MatchResult result) {
+            this.teamId = teamId;
+            this.score = score;
+            this.result = result;
         }
     }
 

@@ -1,5 +1,6 @@
 package com.ithuangma.java.ai.langchain4j.Controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ithuangma.java.ai.langchain4j.Bean.LoginForm;
 import com.ithuangma.java.ai.langchain4j.Bean.RegisterForm;
 import com.ithuangma.java.ai.langchain4j.Bean.Result;
@@ -20,6 +21,7 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
@@ -92,6 +94,28 @@ public class UserController {
         statisticsService.recordUserRegistration();
 
         return Result.ok(user);
+    }
+    @PostMapping("/batch")
+    @Operation(summary = "批量获取用户信息")
+    public Result<List<User>> getUsersBatch(@RequestBody List<Long> userIds) {
+        try {
+            // 使用MyBatis-Plus的in查询
+            List<User> users = userService.list(new LambdaQueryWrapper<User>()
+                    .in(User::getId, userIds));
+            return Result.ok(users);
+        } catch (Exception e) {
+            return Result.fail(500, "获取用户信息失败: " + e.getMessage());
+        }
+    }
+    @GetMapping("/list")
+    @Operation(summary = "获取所有用户列表")
+    public Result<List<User>> getAllUsers() {
+        try {
+            List<User> users = userService.list();
+            return Result.ok(users);
+        } catch (Exception e) {
+            return Result.fail(500, "获取用户列表失败: " + e.getMessage());
+        }
     }
 
     private String generateCaptcha() {

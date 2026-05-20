@@ -22,6 +22,8 @@ import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingSearchResult;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import org.redisson.api.RLock;
+import com.ithuangma.java.ai.langchain4j.matching.MatchResult;
+import com.ithuangma.java.ai.langchain4j.matching.MultiDimensionMatcher;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -55,6 +57,9 @@ public class TeamServiceImpl implements TeamService {
     @Autowired
     private RedissonClient redissonClient;
 
+    @Autowired
+    private MultiDimensionMatcher multiDimensionMatcher;
+
     private static final String TEAM_RECOMMENDATION_CACHE_PREFIX = "team:recommendation:user:";
     private static final int CACHE_TTL_MINUTES = 30;
 
@@ -83,67 +88,63 @@ public class TeamServiceImpl implements TeamService {
 
     @Override
     public boolean joinTeam(Long teamId, Long userId) {
-        // 使用Redisson分布式锁防止重复加入
-        RLock lock = redissonClient.getLock("team_join_lock:" + teamId + ":" + userId);
+        // 第1检（无锁）：快速失败，避免不必要的锁竞争
+        if (isMemberOfTeam(teamId, userId)) {
+            throw new BusinessException("用户已加入队伍", ErrorCode.PARAMS_ERROR.getCode(), "用户已加入队伍");
+        }
 
+        RLock lock = redissonClient.getLock("team_join_lock:" + teamId + ":" + userId);
         try {
-            // 尝试获取锁，等待时间为5秒，锁自动释放时间为10秒
             boolean acquired = lock.tryLock(5, 10, TimeUnit.SECONDS);
 
             if (acquired) {
-                // 再次检查用户是否已经在这个队伍中
-                QueryWrapper<TeamMemberRelation> wrapper = new QueryWrapper<>();
-                wrapper.eq("team_id", teamId).eq("user_id", userId);
-                if (teamMemberRelationMapper.selectCount(wrapper) > 0) {
-                    throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户已加入队伍"); // 已经在队伍中
+                // 第2检（有锁）：防止第1检与加锁之间被其他线程插入
+                if (isMemberOfTeam(teamId, userId)) {
+                    throw new BusinessException("用户已加入队伍", ErrorCode.PARAMS_ERROR.getCode(), "用户已加入队伍");
                 }
 
-                // 检查队伍是否存在
                 TeamProfile teamProfile = teamProfileMapper.selectById(teamId);
                 if (teamProfile == null) {
-                    throw new BusinessException(ErrorCode.PARAMS_ERROR, "队伍不存在");
+                    throw new BusinessException("队伍不存在", ErrorCode.PARAMS_ERROR.getCode(), "队伍不存在");
                 }
 
-                // 根据队伍的访问级别进行不同处理
-                if (teamProfile.getAccessLevel() == 0) { // 公开队伍
-                    // 直接加入
+                if (teamProfile.getAccessLevel() == 0) {
                     TeamMemberRelation relation = TeamMemberRelation.builder()
-                            .teamId(teamId)
-                            .userId(userId)
-                            .role("member")
-                            .build();
+                            .teamId(teamId).userId(userId).role("member").build();
                     teamMemberRelationMapper.insert(relation);
                     return true;
-                } else if (teamProfile.getAccessLevel() == 1) { // 需要匹配的队伍
-                    // 执行匹配算法
+                } else if (teamProfile.getAccessLevel() == 1) {
                     boolean isMatched = checkCompatibility(teamId, userId);
                     if (isMatched) {
                         TeamMemberRelation relation = TeamMemberRelation.builder()
-                                .teamId(teamId)
-                                .userId(userId)
-                                .role("member")
-                                .build();
+                                .teamId(teamId).userId(userId).role("member").build();
                         teamMemberRelationMapper.insert(relation);
                         return true;
                     }
-                    throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户未匹配成功");
-                } else { // 私有队伍
-                    // 只有邀请才能加入
-                    throw new BusinessException(ErrorCode.PARAMS_ERROR, "队伍为私有队伍，需要邀请才能加入");
+                    throw new BusinessException("用户未匹配成功", ErrorCode.PARAMS_ERROR.getCode(), "用户未匹配成功，综合评分低于0.6");
+                } else {
+                    throw new BusinessException("队伍为私有队伍", ErrorCode.PARAMS_ERROR.getCode(), "队伍为私有队伍，需要邀请才能加入");
                 }
             } else {
-                // 获取锁失败，说明已经有其他请求正在处理该用户的入队操作
-                throw new BusinessException(ErrorCode.PARAMS_ERROR, "操作过于频繁，请稍后再试");
+                throw new BusinessException("操作过于频繁", ErrorCode.PARAMS_ERROR.getCode(), "操作过于频繁，请稍后再试");
             }
         } catch (InterruptedException e) {
-            Thread.currentThread().interrupt(); // 恢复中断状态
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "操作被中断");
+            Thread.currentThread().interrupt();
+            throw new BusinessException("操作被中断", ErrorCode.SYSTEM_ERROR.getCode(), "操作被中断");
         } finally {
-            // 释放分布式锁
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
             }
         }
+    }
+
+    /**
+     * 检查用户是否已是队伍成员（抽取为独立方法，第1检和第2检共用）
+     */
+    private boolean isMemberOfTeam(Long teamId, Long userId) {
+        QueryWrapper<TeamMemberRelation> wrapper = new QueryWrapper<>();
+        wrapper.eq("team_id", teamId).eq("user_id", userId);
+        return teamMemberRelationMapper.selectCount(wrapper) > 0;
     }
 
     @Override
@@ -195,68 +196,107 @@ public class TeamServiceImpl implements TeamService {
     }
 
     /**
-     * 计算推荐队伍
+     * 计算推荐队伍（多维加权评分）
      */
     private List<TeamProfile> calculateRecommendations(Long userId) {
-        // 获取用户画像
         UserProfile userProfile = userProfileMapper.selectOne(
                 new QueryWrapper<UserProfile>().eq("user_id", userId));
 
-        if (userProfile == null || userProfile.getTags() == null || userProfile.getTags().isEmpty()) {
+        if (userProfile == null) {
             return List.of();
         }
 
-        // 将用户画像转换为向量
         try {
-            Embedding userEmbedding = embeddingModel.embed(userProfile.getTags()).content();
+            // 1. 用完整画像做初始向量搜索，获取更多候选队伍
+            String userQueryText = buildTeamMatchQueryText(userProfile);
+            Embedding userEmbedding = embeddingModel.embed(userQueryText).content();
 
-            // 创建搜索请求，增加过滤条件：只搜索 type 为 team 的数据
             EmbeddingSearchRequest searchRequest = EmbeddingSearchRequest.builder()
                     .queryEmbedding(userEmbedding)
-                    .maxResults(5)
-                    .minScore(0.6)
+                    .maxResults(15)        // 扩大候选池
+                    .minScore(0.4)         // 降低阈值获取更多候选
                     .filter(MetadataFilterBuilder.metadataKey("type").isEqualTo("team"))
                     .build();
 
-            // 在向量数据库中搜索最相似的队伍
             EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(searchRequest);
             List<EmbeddingMatch<TextSegment>> matches = searchResult.matches();
 
-            System.out.println("=== TeamServiceImpl 调试信息 ===");
-            System.out.println("搜索结果数量: " + matches.size());
+            System.out.println("=== TeamServiceImpl 多维匹配推荐 ===");
+            System.out.println("候选队伍数: " + matches.size());
 
-            // 根据匹配结果返回对应的队伍
-            return matches.stream()
-                    .map(match -> {
-                        TextSegment segment = match.embedded();
-                        if (segment == null) {
-                            System.out.println("警告: 匹配项的 embedded 为 null");
-                            return null;
-                        }
+            // 2. 解析候选队伍，计算多维匹配分数
+            List<ScoredTeam> scoredTeams = new java.util.ArrayList<>();
 
-                        // 打印所有可用的 Metadata 键名，方便排查
-                        System.out.println("Metadata 键名列表: " + segment.metadata().toMap().keySet());
+            for (EmbeddingMatch<TextSegment> match : matches) {
+                TextSegment segment = match.embedded();
+                if (segment == null) continue;
 
-                        String teamIdStr = segment.metadata().getString("teamId");
-                        System.out.println("提取到的 teamId: " + teamIdStr);
+                String teamIdStr = segment.metadata().getString("teamId");
+                if (teamIdStr == null) continue;
 
-                        if (teamIdStr != null) {
-                            try {
-                                Long teamId = Long.parseLong(teamIdStr);
-                                return teamProfileMapper.selectById(teamId);
-                            } catch (NumberFormatException e) {
-                                System.err.println("teamId 格式错误: " + teamIdStr);
-                                return null;
-                            }
-                        }
-                        return null;
-                    })
-                    .filter(team -> team != null)
+                try {
+                    Long teamId = Long.parseLong(teamIdStr);
+                    TeamProfile team = teamProfileMapper.selectById(teamId);
+                    if (team == null) continue;
+
+                    // 多维加权评分
+                    MatchResult result = multiDimensionMatcher.scoreUserTeamMatch(userProfile, team);
+                    scoredTeams.add(new ScoredTeam(team, result.getOverallScore(), result));
+
+                } catch (NumberFormatException e) {
+                    System.err.println("teamId 格式错误: " + teamIdStr);
+                }
+            }
+
+            // 3. 按综合评分排序，取前5
+            scoredTeams.sort((a, b) -> Double.compare(b.score, a.score));
+
+            printRecommendationResult(scoredTeams);
+
+            return scoredTeams.stream()
+                    .limit(5)
+                    .map(st -> st.team)
                     .toList();
+
         } catch (Exception e) {
             e.printStackTrace();
-            // 如果向量匹配失败，返回空列表
             return List.of();
+        }
+    }
+
+    private void printRecommendationResult(List<ScoredTeam> scoredTeams) {
+        System.out.println("==== 推荐排名 ====");
+        for (int i = 0; i < Math.min(5, scoredTeams.size()); i++) {
+            ScoredTeam st = scoredTeams.get(i);
+            System.out.println("第" + (i + 1) + "名: " + st.team.getName()
+                    + " | 综合分: " + String.format("%.2f", st.score));
+            st.result.getDimensionScores().forEach(d ->
+                    System.out.println("    " + d.getName() + ": " + String.format("%.2f", d.getScore())));
+        }
+        System.out.println("====================");
+    }
+
+    /** 构建用于队伍匹配的查询文本 */
+    private String buildTeamMatchQueryText(UserProfile user) {
+        StringBuilder sb = new StringBuilder();
+        if (user.getTags() != null) sb.append("标签：").append(user.getTags()).append("\n");
+        if (user.getInterests() != null) sb.append("兴趣爱好：").append(user.getInterests()).append("\n");
+        if (user.getPreferences() != null) sb.append("偏好：").append(user.getPreferences()).append("\n");
+        if (user.getPersonalityTraits() != null) sb.append("性格特征：").append(user.getPersonalityTraits()).append("\n");
+        if (user.getCommunicationStyle() != null) sb.append("沟通风格：").append(user.getCommunicationStyle()).append("\n");
+        return sb.toString();
+    }
+
+    /** 带评分的队伍候选 */
+    private static class ScoredTeam {
+        final TeamProfile team;
+        final double score;
+        final MatchResult result;
+
+        ScoredTeam(TeamProfile team, double score, MatchResult result) {
+            this.team = team;
+            this.score = score;
+            this.result = result;
         }
     }
 
@@ -284,40 +324,33 @@ public class TeamServiceImpl implements TeamService {
         return teamMemberRelationMapper.selectList(wrapper);
     }
 
-    // 检查用户与队伍的兼容性
+    // 检查用户与队伍的兼容性（使用多维加权评分）
     private boolean checkCompatibility(Long teamId, Long userId) {
-        // 获取用户画像
         UserProfile userProfile = userProfileMapper.selectOne(
                 new QueryWrapper<UserProfile>().eq("user_id", userId));
 
-        // 获取队伍信息
         TeamProfile teamProfile = teamProfileMapper.selectById(teamId);
 
         if (userProfile == null || teamProfile == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户或队伍不存在");
         }
 
-        // 使用向量相似度进行匹配
+        if (teamProfile.getPersonalityConstraint() == null || teamProfile.getPersonalityConstraint().isBlank()) {
+            return true; // 队伍没有约束条件，默认允许加入
+        }
+
         try {
-            String userDescription = userProfile.getTags();
-            String teamConstraint = teamProfile.getPersonalityConstraint();
+            MatchResult result = multiDimensionMatcher.scoreUserTeamMatch(userProfile, teamProfile);
+            System.out.println("checkCompatibility 用户-" + userId + " 队伍-" + teamId
+                    + " 综合分: " + String.format("%.2f", result.getOverallScore()));
+            result.getDimensionScores().forEach(d ->
+                    System.out.println("  - " + d.getName() + ": " + String.format("%.2f", d.getScore())
+                            + " (权重 " + String.format("%.2f", d.getWeight()) + ")"));
 
-            if (userDescription == null || teamConstraint == null) {
-                return true; // 默认允许加入
-            }
-
-            // 将用户和队伍转换为向量
-            Embedding userEmbedding = embeddingModel.embed(userDescription).content();
-            Embedding teamEmbedding = embeddingModel.embed(teamConstraint).content();
-
-            // 计算余弦相似度
-            double similarity = cosineSimilarity(userEmbedding.vectorAsList(), teamEmbedding.vectorAsList());
-
-            // 相似度阈值设为 0.6
-            return similarity >= 0.6;
+            return result.getOverallScore() >= 0.6;
         } catch (Exception e) {
             e.printStackTrace();
-            return true; // 出错时默认允许
+            return true;
         }
     }
 
@@ -346,33 +379,5 @@ public class TeamServiceImpl implements TeamService {
             System.err.println("队伍 " + teamProfile.getId() + " 的向量索引失败: " + e.getMessage());
             e.printStackTrace();
         }
-    }
-
-    /**
-     * 计算两个向量的余弦相似度
-     */
-    private double cosineSimilarity(List<Float> vector1, List<Float> vector2) {
-        if (vector1.size() != vector2.size()) {
-            return 0.0;
-        }
-
-        double dotProduct = 0.0;
-        double norm1 = 0.0;
-        double norm2 = 0.0;
-
-        for (int i = 0; i < vector1.size(); i++) {
-            float v1 = vector1.get(i);
-            float v2 = vector2.get(i);
-
-            dotProduct += v1 * v2;
-            norm1 += v1 * v1;
-            norm2 += v2 * v2;
-        }
-
-        if (norm1 == 0 || norm2 == 0) {
-            return 0.0;
-        }
-
-        return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
     }
 }
