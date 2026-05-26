@@ -1,19 +1,59 @@
 package com.ithuangma.java.ai.langchain4j.Controller;
 
+import com.ithuangma.java.ai.langchain4j.Bean.ChatForm;
 import com.ithuangma.java.ai.langchain4j.Bean.Result;
 import com.ithuangma.java.ai.langchain4j.Service.PartnerMatchingService;
+import com.ithuangma.java.ai.langchain4j.Service.StatisticsService;
+import com.ithuangma.java.ai.langchain4j.assistant.PartnerMatchingAgent;
 import com.ithuangma.java.ai.langchain4j.entity.PairRelation;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
 @RestController
+@Tag(name = "智能伙伴匹配")
 @RequestMapping("/api/v1/partners")
 public class PartnerMatchingController {
 
     @Autowired
     private PartnerMatchingService partnerMatchingService;
+
+    @Autowired
+    private PartnerMatchingAgent partnerMatchingAgent;
+
+    @Autowired
+    private StatisticsService statisticsService;
+
+    // ==================== AI对话接口 ====================
+
+    /**
+     * 智能匹配助手对话接口
+     * 用户通过对话让AI助手帮助找伙伴、找队伍、管理匹配请求
+     * 在用户消息中隐式注入userId，让AI知道当前用户身份
+     */
+    @Operation(summary = "与智能匹配助手对话")
+    @PostMapping(value = "/chat", produces = "text/stream;charset=utf-8")
+    public Flux<String> chatWithAssistant(@RequestBody ChatForm chatForm) {
+        // 记录API请求统计
+        statisticsService.recordApiRequest("partner_matching_agent");
+
+        // 将userId信息注入到用户消息中，让AI知道当前用户身份
+        // 这样AI调用Tool时就知道该用哪个userId
+        String enrichedMessage;
+        if (chatForm.getUserId() != null) {
+            enrichedMessage = "[当前登录用户ID: " + chatForm.getUserId() + "] " + chatForm.getMessage();
+        } else {
+            enrichedMessage = chatForm.getMessage();
+        }
+
+        return partnerMatchingAgent.chat(chatForm.getMemoryId(), enrichedMessage);
+    }
+
+    // ==================== REST接口（保留原有的直接调用方式） ====================
 
     /**
      * 获取伙伴推荐列表

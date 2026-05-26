@@ -128,12 +128,15 @@ public class TeamChatWebSocket {
         // 检查会话是否存在，如果不存在则创建
         ChatSession chatSession = mongoTemplate.findById(teamId, ChatSession.class, "chat_sessions");
         if (chatSession == null) {
-            // 创建新的会话
+            // 创建新的会话，初始化参与者列表
+            java.util.List<String> participants = new java.util.ArrayList<>();
+            participants.add(userId);
             chatSession = ChatSession.builder()
                     .id(teamId)
                     .sessionId(teamId)
                     .type("GROUP")
                     .teamId(teamId)
+                    .participants(participants)
                     .messages(java.util.Collections.singletonList(dbMessage))
                     .lastActiveTime(new java.util.Date())
                     .build();
@@ -142,6 +145,13 @@ public class TeamChatWebSocket {
             // 添加消息到现有会话
             chatSession.getMessages().add(dbMessage);
             chatSession.setLastActiveTime(new java.util.Date());
+            // 确保参与者列表包含当前用户（向前兼容已有数据的初始化）
+            if (chatSession.getParticipants() == null) {
+                chatSession.setParticipants(new java.util.ArrayList<>());
+            }
+            if (!chatSession.getParticipants().contains(userId)) {
+                chatSession.getParticipants().add(userId);
+            }
             mongoTemplate.save(chatSession, "chat_sessions");
         }
 
@@ -159,12 +169,13 @@ public class TeamChatWebSocket {
     private void handleAITrigger(String content) {
         ChatSession chatSession = mongoTemplate.findById(teamId, ChatSession.class, "chat_sessions");
         if (chatSession == null) {
-            // 如果没有会话，创建一个空会话
+            // 如果没有会话，创建一个空会话（AI触发场景，参与者列表初始为空）
             chatSession = ChatSession.builder()
                     .id(teamId)
                     .sessionId(teamId)
                     .type("GROUP")
                     .teamId(teamId)
+                    .participants(new java.util.ArrayList<>())
                     .messages(new java.util.ArrayList<>())
                     .lastActiveTime(new java.util.Date())
                     .build();

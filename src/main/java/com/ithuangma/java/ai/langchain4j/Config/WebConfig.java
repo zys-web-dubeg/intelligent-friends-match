@@ -1,4 +1,4 @@
-package com.ithuangma.java.ai.langchain4j.config;
+package com.ithuangma.java.ai.langchain4j.Config;
 
 import com.ithuangma.java.ai.langchain4j.interceptor.JwtInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -31,4 +31,8 @@ public class ChatSession {
     private List<ChatMessage> messages;
 
     private Date lastActiveTime;
+
+    private String userId; // 所属用户ID（私聊）
+
+    private String aiId;   // 所属AI助手ID（私聊）
 }
