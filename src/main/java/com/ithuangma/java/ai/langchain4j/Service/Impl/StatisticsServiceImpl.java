@@ -7,6 +7,7 @@ import com.ithuangma.java.ai.langchain4j.entity.Statistics;
 import com.ithuangma.java.ai.langchain4j.entity.TeamProfile;
 import com.ithuangma.java.ai.langchain4j.mapper.StatisticsMapper;
 import com.ithuangma.java.ai.langchain4j.mapper.TeamProfileMapper;
+import com.ithuangma.java.ai.langchain4j.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +26,9 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     @Autowired
     private TeamProfileMapper teamProfileMapper;
+
+    @Autowired
+    private UserMapper userMapper;
 
     @Override
     public void recordUserRegistration() {
@@ -227,10 +231,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         Map<String, Object> result = new HashMap<>();
 
         // 查询用户注册数
-        QueryWrapper<Statistics> userRegWrapper = new QueryWrapper<>();
-        userRegWrapper.eq("statistics_type", "user_register")
-                .between("statistics_date", startDate.atStartOfDay(), endDate.atTime(LocalTime.MAX));
-        int userRegisterCount = statisticsMapper.selectCount(userRegWrapper).intValue();
+        int currentUserCount = userMapper.selectCount(new QueryWrapper<>()).intValue();
 
         // 查询队伍总数（不限制时间范围，显示所有队伍）
         QueryWrapper<TeamProfile> teamWrapper = new QueryWrapper<>();
@@ -251,7 +252,8 @@ public class StatisticsServiceImpl implements StatisticsService {
         }
 
         result.put("period", periodName);
-        result.put("userRegisterCount", userRegisterCount);
+        result.put("userRegisterCount", currentUserCount);
+        result.put("currentUserCount", currentUserCount);
         result.put("teamCount", teamCount);
         result.put("totalApiRequests", getTotalApiRequests(startDate, endDate));
         result.put("apiRequests", apiRequests);

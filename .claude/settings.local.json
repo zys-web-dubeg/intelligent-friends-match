@@ -33,7 +33,8 @@
       "Bash(kill %1)",
       "Bash(wait)",
       "Bash(PINECONE_DEBUG=true mvn compile exec:java -Dexec.mainClass=\"com.ithuangma.java.ai.langchain4j.AIAssistantApp\")",
-      "Bash(mvn compile *)"
+      "Bash(mvn compile *)",
+      "Bash(xargs grep -l \"MetaObjectHandler\\\\|setFieldValByName\\\\|createTime\\\\|updateTime\")"
     ]
   }
 }

@@ -245,7 +245,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         });
     }
 
-    // 构建用户画像描述
+
     @Override
     public List<Long> findSuitableTeamsByProfile(Long userId) {
         String cacheKey = USER_PROFILE_TEAM_RECOMMENDATION_CACHE_PREFIX + userId;
