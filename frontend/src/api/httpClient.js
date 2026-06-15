@@ -1,0 +1,63 @@
+import axios from 'axios'
+import { getToken } from './authService'
+
+// 创建统一的 axios 实例
+const apiClient = axios.create({
+  baseURL: '',
+  timeout: 60000,
+})
+
+// 请求拦截器 - 自动添加 JWT token
+apiClient.interceptors.request.use(
+  config => {
+    const token = getToken()
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+      console.log('Request with token:', config.url)
+    } else {
+      console.warn('No token found for request:', config.url)
+    }
+    return config
+  },
+  error => {
+    console.error('Request interceptor error:', error)
+    return Promise.reject(error)
+  }
+)
+
+// 响应拦截器 - 统一处理响应和错误
+apiClient.interceptors.response.use(
+  response => {
+    const data = response.data
+    // 检查业务 code，非200 视为错误
+    if (data && data.code !== undefined && data.code !== 200) {
+      const err = new Error(data.message || '请求失败')
+      err.response = { data, status: response.status }
+      err.code = data.code
+      return Promise.reject(err)
+    }
+    return data
+  },
+  error => {
+    console.error('Response error:', error)
+
+    // 处理 401 未授权错误
+    if (error.response?.status === 401) {
+      console.warn('Token expired or invalid, redirecting to login...')
+      // 清除无效 token
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user_info')
+      // 跳转到登录页
+      window.location.href = '/login'
+    }
+
+    // 处理 403 禁止访问错误
+    if (error.response?.status === 403) {
+      console.error('Access forbidden:', error.response.data)
+    }
+
+    return Promise.reject(error)
+  }
+)
+
+export default apiClient
