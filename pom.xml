@@ -18,6 +18,7 @@
         <mybatis-plus.version>3.5.11</mybatis-plus.version>
     </properties>
     <dependencies>
+
         <!-- web应用程序核心依赖 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
