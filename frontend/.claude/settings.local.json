@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(curl -v http://localhost:8080/api/user/captcha)",
+      "Bash(curl *)",
+      "Bash(python3)",
+      "Bash(node -e ' *)",
+      "Bash(npx vite *)",
+      "Bash(sed -i '32d' \"E:/xiaozhi-ui/src/api/websocket.js\")",
+      "Bash(sed -i 's|${backendHost}|${window.location.host}|g' \"E:/xiaozhi-ui/src/api/websocket.js\")"
+    ]
+  }
+}

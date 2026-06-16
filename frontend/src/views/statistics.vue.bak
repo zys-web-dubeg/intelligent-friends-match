@@ -1,0 +1,637 @@
+<template>
+  <div class="statistics-container">
+    <div class="header">
+      <h2>数据统计</h2>
+      <div class="date-range-selector">
+        <el-radio-group v-model="selectedDateRange" @change="handleDateRangeChange">
+          <el-radio-button label="threeDays">近3天</el-radio-button>
+          <el-radio-button label="sevenDays">近7天</el-radio-button>
+          <el-radio-button label="thirtyDays">近30天</el-radio-button>
+        </el-radio-group>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-card">
+        <h3>用户注册统计</h3>
+        <div class="chart-type-selector">
+          <el-radio-group v-model="userChartType" size="small">
+            <el-radio-button label="line">折线图</el-radio-button>
+            <el-radio-button label="bar">柱状图</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div class="chart-wrapper">
+          <ChartComponent :option="userChartOption" />
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <h3>API请求统计</h3>
+        <div class="chart-type-selector">
+          <el-radio-group v-model="apiChartType" size="small">
+            <el-radio-button label="line">折线图</el-radio-button>
+            <el-radio-button label="bar">柱状图</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div class="chart-wrapper">
+          <ChartComponent :option="apiChartOption" />
+        </div>
+      </div>
+
+      <div class="chart-card full-width">
+        <h3>用户注册与API请求对比</h3>
+        <div class="chart-type-selector">
+          <el-radio-group v-model="comparisonChartType" size="small">
+            <el-radio-button label="line">折线图</el-radio-button>
+            <el-radio-button label="bar">柱状图</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div class="chart-wrapper">
+          <ChartComponent :option="comparisonChartOption" />
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <h3>各智能体API请求统计</h3>
+        <div class="chart-wrapper">
+          <ChartComponent :option="allApiChartOption" />
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, computed } from 'vue'
+import { ElMessage } from 'element-plus'
+import apiClient from '@/api/httpClient'
+import ChartComponent from '@/components/ChartComponent.vue'
+
+// 图表类型选择
+const userChartType = ref('line')
+const apiChartType = ref('line')
+const comparisonChartType = ref('line')
+
+// 日期范围选择
+const selectedDateRange = ref('threeDays')
+
+// 统计数据
+const statisticsData = ref({
+  userRegistrationData: [],
+  apiRequestData: [],
+  comparisonData: [],
+  allApiRequestsData: []
+})
+
+// API端点映射
+const apiEndpoints = {
+  threeDays: '/api/statistics/recent-three-days',
+  sevenDays: '/api/statistics/recent-seven-days',
+  thirtyDays: '/api/statistics/recent-thirty-days'
+}
+
+// 计算属性 - 用户注册图表选项
+const userChartOption = computed(() => {
+  try {
+    const { userRegistrationData } = statisticsData.value
+    
+    // 检查数据是否存在且为数组
+    if (!Array.isArray(userRegistrationData)) {
+      return {
+        title: { text: '暂无数据' },
+        xAxis: { type: 'category', data: [] },
+        yAxis: { type: 'value' },
+        series: []
+      }
+    }
+    
+    const dates = userRegistrationData.map(item => {
+      if (typeof item === 'object' && item) {
+        return item.date || item.日期 || ''
+      }
+      return ''
+    })
+    
+    const counts = userRegistrationData.map(item => {
+      if (typeof item === 'object' && item) {
+        return item.count || item['用户注册数'] || 0
+      }
+      return 0
+    })
+    
+    const chartType = userChartType.value === 'line' ? 'line' : 'bar'
+    
+    return {
+      title: {
+        show: false
+      },
+      tooltip: {
+        trigger: 'axis'
+      },
+      legend: {
+        data: ['用户注册数']
+      },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        axisLabel: {
+          interval: 0,
+          rotate: 45
+        }
+      },
+      yAxis: {
+        type: 'value'
+      },
+      series: [{
+        name: '用户注册数',
+        type: chartType,
+        data: counts,
+        smooth: true,
+        itemStyle: {
+          color: '#5470c6'
+        },
+        areaStyle: chartType === 'line' ? { opacity: 0.3 } : undefined
+      }]
+    }
+  } catch (error) {
+    console.error('生成用户注册图表选项错误:', error)
+    return {
+      title: { text: '数据加载错误' },
+      xAxis: { type: 'category', data: [] },
+      yAxis: { type: 'value' },
+      series: []
+    }
+  }
+})
+
+// 计算属性 - API请求图表选项
+const apiChartOption = computed(() => {
+  try {
+    const { apiRequestData } = statisticsData.value
+    
+    // 检查数据是否存在且为数组
+    if (!Array.isArray(apiRequestData)) {
+      return {
+        title: { text: '暂无数据' },
+        xAxis: { type: 'category', data: [] },
+        yAxis: { type: 'value' },
+        series: []
+      }
+    }
+    
+    const dates = apiRequestData.map(item => {
+      if (typeof item === 'object' && item) {
+        return item.date || item.日期 || ''
+      }
+      return ''
+    })
+    
+    const counts = apiRequestData.map(item => {
+      if (typeof item === 'object' && item) {
+        return item.count || item['API请求次数'] || 0
+      }
+      return 0
+    })
+    
+    const chartType = apiChartType.value === 'line' ? 'line' : 'bar'
+    
+    return {
+      title: {
+        show: false
+      },
+      tooltip: {
+        trigger: 'axis'
+      },
+      legend: {
+        data: ['API请求次数']
+      },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        axisLabel: {
+          interval: 0,
+          rotate: 45
+        }
+      },
+      yAxis: {
+        type: 'value'
+      },
+      series: [{
+        name: 'API请求次数',
+        type: chartType,
+        data: counts,
+        smooth: true,
+        itemStyle: {
+          color: '#91cc75'
+        },
+        areaStyle: chartType === 'line' ? { opacity: 0.3 } : undefined
+      }]
+    }
+  } catch (error) {
+    console.error('生成API请求图表选项错误:', error)
+    return {
+      title: { text: '数据加载错误' },
+      xAxis: { type: 'category', data: [] },
+      yAxis: { type: 'value' },
+      series: []
+    }
+  }
+})
+
+// 计算属性 - 对比图表选项
+const comparisonChartOption = computed(() => {
+  try {
+    const { comparisonData } = statisticsData.value
+    
+    // 检查数据是否存在且为数组
+    if (!Array.isArray(comparisonData)) {
+      return {
+        title: { text: '暂无数据' },
+        xAxis: { type: 'category', data: [] },
+        yAxis: { type: 'value' },
+        series: []
+      }
+    }
+    
+    const dates = comparisonData.map(item => {
+      if (typeof item === 'object' && item) {
+        return item.date || item.日期 || ''
+      }
+      return ''
+    })
+    
+    const userCounts = comparisonData.map(item => {
+      if (typeof item === 'object' && item) {
+        return item.userCount || item['用户注册数'] || 0
+      }
+      return 0
+    })
+    
+    const apiCounts = comparisonData.map(item => {
+      if (typeof item === 'object' && item) {
+        return item.apiCount || item['API请求次数'] || 0
+      }
+      return 0
+    })
+    
+    const chartType = comparisonChartType.value === 'line' ? 'line' : 'bar'
+    
+    return {
+      title: {
+        show: false
+      },
+      tooltip: {
+        trigger: 'axis'
+      },
+      legend: {
+        data: ['用户注册数', 'API请求次数']
+      },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        axisLabel: {
+          interval: 0,
+          rotate: 45
+        }
+      },
+      yAxis: {
+        type: 'value'
+      },
+      series: [
+        {
+          name: '用户注册数',
+          type: chartType,
+          data: userCounts,
+          smooth: true,
+          itemStyle: {
+            color: '#5470c6'
+          },
+          areaStyle: chartType === 'line' ? { opacity: 0.3 } : undefined
+        },
+        {
+          name: 'API请求次数',
+          type: chartType,
+          data: apiCounts,
+          smooth: true,
+          itemStyle: {
+            color: '#fac858'
+          },
+          areaStyle: chartType === 'line' ? { opacity: 0.3 } : undefined
+        }
+      ]
+    }
+  } catch (error) {
+    console.error('生成对比图表选项错误:', error)
+    return {
+      title: { text: '数据加载错误' },
+      xAxis: { type: 'category', data: [] },
+      yAxis: { type: 'value' },
+      series: []
+    }
+  }
+})
+
+// 计算属性 - 所有API图表选项
+const allApiChartOption = computed(() => {
+  try {
+    const { allApiRequestsData } = statisticsData.value
+    
+    // 检查数据是否存在且为数组
+    if (!Array.isArray(allApiRequestsData)) {
+      return {
+        title: { text: '暂无数据' },
+        xAxis: { type: 'category', data: [] },
+        yAxis: { type: 'value' },
+        series: []
+      }
+    }
+    
+    const dates = allApiRequestsData.map(item => {
+      if (typeof item === 'object' && item) {
+        return item.date || item.日期 || ''
+      }
+      return ''
+    })
+    
+    // 处理不同可能的数据字段名称
+    const zhangzhikangData = allApiRequestsData.map(item => {
+      if (typeof item === 'object' && item) {
+        return item['医疗助手'] || item.zhangzhikang || item.yiliao || 0
+      }
+      return 0
+    })
+    
+    const yangnanData = allApiRequestsData.map(item => {
+      if (typeof item === 'object' && item) {
+        return item['购物助手'] || item.yangnan || item.gouwu || 0
+      }
+      return 0
+    })
+    
+    const tuzhixingData = allApiRequestsData.map(item => {
+      if (typeof item === 'object' && item) {
+        return item['恋爱助手'] || item.tuzhixing || item.lianai || 0
+      }
+      return 0
+    })
+    
+    const learningData = allApiRequestsData.map(item => {
+      if (typeof item === 'object' && item) {
+        return item['学习助手'] || item.learning || item.xuexi || 0
+      }
+      return 0
+    })
+    
+    return {
+      title: {
+        show: false
+      },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+          type: 'shadow'
+        }
+      },
+      legend: {
+        data: ['医疗助手', '购物助手', '恋爱助手', '学习助手']
+      },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        axisLabel: {
+          interval: 0,
+          rotate: 45
+        },
+        axisTick: {
+          alignWithLabel: true
+        }
+      },
+      yAxis: {
+        type: 'value'
+      },
+      series: [
+        {
+          name: '医疗助手',
+          type: 'bar',
+          data: zhangzhikangData,
+          itemStyle: { color: '#5470c6' }
+        },
+        {
+          name: '购物助手',
+          type: 'bar',
+          data: yangnanData,
+          itemStyle: { color: '#91cc75' }
+        },
+        {
+          name: '恋爱助手',
+          type: 'bar',
+          data: tuzhixingData,
+          itemStyle: { color: '#fac858' }
+        },
+        {
+          name: '学习助手',
+          type: 'bar',
+          data: learningData,
+          itemStyle: { color: '#ee6666' }
+        }
+      ]
+    }
+  } catch (error) {
+    console.error('生成所有API图表选项错误:', error)
+    return {
+      title: { text: '数据加载错误' },
+      xAxis: { type: 'category', data: [] },
+      yAxis: { type: 'value' },
+      series: []
+    }
+  }
+})
+
+// 加载数据函数
+const loadStatisticsData = async () => {
+  try {
+    const url = apiEndpoints[selectedDateRange.value]
+    console.log('开始请求数据:', url)
+
+    // 检查token是否存在
+    const token = localStorage.getItem('auth_token')
+    console.log('当前token:', token ? '存在' : '不存在')
+
+    const res = await apiClient.get(url)
+
+    console.log('API原始返回:', res)
+
+    // 检查是否收到了HTML响应
+    if (typeof res === 'string' && res.includes('<!DOCTYPE html>')) {
+      console.error('错误: 收到了HTML响应而非JSON数据')
+      ElMessage.error('后端API未正确配置，请检查后端服务')
+      statisticsData.value = { userRegistrationData: [], apiRequestData: [], comparisonData: [], allApiRequestsData: [] }
+      return
+    }
+
+    // res 已经是 response.data（拦截器返回）
+    let extractedData = {}
+
+    if (res && typeof res === 'object') {
+      if (res.code === 200 && res.data) {
+        extractedData = res.data
+        console.log('使用结构: {code: 200, data: {...}}')
+      } else if (res.code !== undefined) {
+        extractedData = { ...res }
+        delete extractedData.code
+        delete extractedData.message
+        console.log('使用结构: 直接提取（去除code/message）')
+      } else {
+        extractedData = res
+        console.log('使用结构: 直接使用响应')
+      }
+    }
+
+    console.log('提取的数据:', JSON.stringify(extractedData, null, 2))
+
+    // 后端返回的是汇总数据，需要转换为图表所需的数组格式
+    // 示例: { userRegisterCount: 4, totalApiRequests: 18, apiRequests: {...}, startDate, endDate, period }
+
+    // 生成日期范围数组
+    const startDate = new Date(extractedData.startDate)
+    const endDate = new Date(extractedData.endDate)
+    const dates = []
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      dates.push(d.toISOString().split('T')[0])
+    }
+
+    console.log('生成的日期数组:', dates)
+
+    // 用户注册数据 - 后端只返回总数，需要按日期分配（这里先显示总数）
+    const userRegistrationData = dates.map(date => ({
+      date,
+      count: extractedData.userRegistrationData ? 0 : Math.round(extractedData.userRegisterCount / dates.length)
+    }))
+
+    // API请求数据
+    const apiRequestData = dates.map(date => ({
+      date,
+      count: extractedData.apiRequestData ? 0 : Math.round(extractedData.totalApiRequests / dates.length)
+    }))
+
+    // 对比数据
+    const comparisonData = dates.map(date => ({
+      date,
+      userCount: extractedData.userRegistrationData ? 0 : Math.round(extractedData.userRegisterCount / dates.length),
+      apiCount: extractedData.apiRequestData ? 0 : Math.round(extractedData.totalApiRequests / dates.length)
+    }))
+
+    // 各智能体API请求数据
+    const allApiRequestsData = dates.map(date => ({
+      date,
+      '医疗助手': extractedData.apiRequests?.['硅谷小智'] || 0,
+      '购物助手': extractedData.apiRequests?.['购物助手'] || 0,
+      '恋爱助手': extractedData.apiRequests?.['恋爱智能体'] || 0,
+      '学习助手': extractedData.apiRequests?.['学习助手'] || 0
+    }))
+
+    statisticsData.value = {
+      userRegistrationData: extractedData.userRegistrationData || userRegistrationData,
+      apiRequestData: extractedData.apiRequestData || apiRequestData,
+      comparisonData: extractedData.comparisonData || comparisonData,
+      allApiRequestsData: extractedData.allApiRequestsData || allApiRequestsData
+    }
+
+    console.log('最终设置的统计数据:', statisticsData.value)
+
+    const hasData = Object.values(statisticsData.value).some(arr => Array.isArray(arr) && arr.length > 0)
+    if (!hasData) {
+      console.warn('警告: 没有获取到任何统计数据')
+      ElMessage.warning('暂无统计数据 - 请打开控制台(F12)查看详细日志')
+    }
+  } catch (error) {
+    console.error('获取统计数据失败:', error)
+    console.error('错误详情:', error.response || error.message)
+    statisticsData.value = { userRegistrationData: [], apiRequestData: [], comparisonData: [], allApiRequestsData: [] }
+    const errMsg = error.response?.data?.message || error.message || '未知错误'
+    ElMessage.error('获取统计数据失败: ' + errMsg)
+  }
+}
+
+// 日期范围变化处理
+const handleDateRangeChange = () => {
+  loadStatisticsData()
+}
+
+// 初始化数据
+onMounted(() => {
+  loadStatisticsData()
+})
+</script>
+
+<style scoped>
+.statistics-container {
+  padding: 20px;
+  background-color: #f5f5f5;
+  min-height: 100vh;
+  overflow-x: auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+.header h2 {
+  margin: 0;
+  color: #303133;
+}
+
+.date-range-selector {
+  display: flex;
+  align-items: center;
+}
+
+.chart-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+  gap: 20px;
+  padding-bottom: 20px;
+}
+
+.chart-card {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+.chart-card.full-width {
+  grid-column: 1 / -1;
+}
+
+.chart-card h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #303133;
+}
+
+.chart-type-selector {
+  margin-bottom: 15px;
+}
+
+.chart-wrapper {
+  height: 400px;
+}
+
+@media (max-width: 768px) {
+  .chart-container {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-wrapper {
+    height: 300px;
+  }
+}
+</style>
