@@ -32,6 +32,7 @@ public class PromptTest {
         String answer3 = memoryChatAssistant.chat("我的外号是王麻子，你猜我是谁");
         System.out.println(answer3);
 
+
     }
     @Test
     public void testChat2() {
