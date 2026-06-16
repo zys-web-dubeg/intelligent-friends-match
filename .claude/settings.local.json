@@ -36,5 +36,6 @@
       "Bash(mvn compile *)",
       "Bash(xargs grep -l \"MetaObjectHandler\\\\|setFieldValByName\\\\|createTime\\\\|updateTime\")"
     ]
+
   }
 }
