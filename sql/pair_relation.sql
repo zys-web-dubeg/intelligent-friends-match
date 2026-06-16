@@ -16,3 +16,11 @@ CREATE TABLE IF NOT EXISTS `pair_relation` (
     CONSTRAINT `fk_pair_from_user` FOREIGN KEY (`from_user_id`) REFERENCES `sys_user` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT `fk_pair_to_user` FOREIGN KEY (`to_user_id`) REFERENCES `sys_user` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='伙伴匹配关系表';
+INSERT INTO pair_relation (id, from_user_id, to_user_id, status, match_type, message, create_time, update_time) VALUES (2, 1, 8, 'accepted', 'friend', '', '2026-05-19 11:37:03', '2026-05-19 11:59:50');
+INSERT INTO pair_relation (id, from_user_id, to_user_id, status, match_type, message, create_time, update_time) VALUES (3, 1, 10, 'pending', 'friend', '', '2026-05-19 11:48:13', '2026-05-19 11:48:13');
+INSERT INTO pair_relation (id, from_user_id, to_user_id, status, match_type, message, create_time, update_time) VALUES (4, 1, 12, 'cancelled', 'friend', '', '2026-05-19 11:48:13', '2026-05-20 09:16:47');
+INSERT INTO pair_relation (id, from_user_id, to_user_id, status, match_type, message, create_time, update_time) VALUES (5, 1, 9, 'pending', 'friend', '', '2026-05-19 11:48:13', '2026-05-19 11:48:13');
+INSERT INTO pair_relation (id, from_user_id, to_user_id, status, match_type, message, create_time, update_time) VALUES (6, 1, 13, 'pending', 'friend', '', '2026-05-19 11:48:13', '2026-05-19 11:48:13');
+INSERT INTO pair_relation (id, from_user_id, to_user_id, status, match_type, message, create_time, update_time) VALUES (7, 1, 11, 'pending', 'friend', '', '2026-05-19 11:48:13', '2026-05-19 11:48:13');
+INSERT INTO pair_relation (id, from_user_id, to_user_id, status, match_type, message, create_time, update_time) VALUES (8, 8, 14, 'pending', 'friend', '', '2026-05-19 12:00:09', '2026-05-19 12:00:09');
+
