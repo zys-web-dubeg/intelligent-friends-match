@@ -37,9 +37,11 @@ public class TeamChatWebSocket {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private MongoTemplate mongoTemplate;
+    private TeamAiTriggerPolicy teamAiTriggerPolicy;
 
     public TeamChatWebSocket() {
         this.mongoTemplate = SpringContextUtil.getBean(MongoTemplate.class);
+        this.teamAiTriggerPolicy = SpringContextUtil.getBean(TeamAiTriggerPolicy.class);
     }
 
     @OnOpen
@@ -159,7 +161,7 @@ public class TeamChatWebSocket {
         broadcastToTeam(teamId, userId, chatMessage.getContent(), dbMessage.getTimestamp());
 
         // 检查是否需要AI参与（例如，消息中包含特定关键词）
-        if (shouldAIParticipate(chatMessage.getContent())) {
+        if (teamAiTriggerPolicy.shouldAIParticipate(chatMessage.getContent())) {
             // 异步生成AI回复，避免阻塞当前消息处理
             handleAITrigger(chatMessage.getContent());
         }
@@ -283,37 +285,6 @@ public class TeamChatWebSocket {
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
-
-    // 判断是否需要AI参与对话
-    private boolean shouldAIParticipate(String content) {
-        String lowerContent = content.toLowerCase();
-        return lowerContent.contains("ai") ||
-                lowerContent.contains("助手") ||
-                lowerContent.contains("帮忙") ||
-                lowerContent.contains("帮助") ||
-                lowerContent.contains("建议") ||
-                lowerContent.contains("意见") ||
-                lowerContent.contains("怎么看") ||
-                lowerContent.contains("想法") ||
-                lowerContent.contains("推荐") ||
-                lowerContent.contains("应该") ||
-                lowerContent.contains("多少") ||
-                lowerContent.contains("什么") ||
-                lowerContent.contains("怎么") ||
-                lowerContent.contains("为什么") ||
-                lowerContent.contains("哪个") ||
-                lowerContent.contains("请教") ||
-                lowerContent.contains("告诉") ||
-                lowerContent.contains("知道") ||
-                lowerContent.contains("好不好") ||
-                lowerContent.contains("对吗") ||
-                lowerContent.contains("正确") ||
-                lowerContent.contains("问题") ||
-                lowerContent.contains("方法") ||
-                lowerContent.contains("学习") ||
-                content.contains("？") ||
-                content.contains("?");
     }
 
     // 用于反序列化前端发送的消息
