@@ -192,11 +192,12 @@ public class TeamChatWebSocket {
                 TeamChatAssistant teamChatAssistant = SpringContextUtil.getBean(TeamChatAssistant.class);
                 if (teamChatAssistant != null) {
                     String aiReply = teamChatAssistant.generateTeamReply(teamId, "ai_assistant", userContent);
+                    String normalizedReply = normalizeAiMessageContent(aiReply);
 
                     ChatMessage aiMessage = ChatMessage.builder()
                             .senderId("ai_assistant")
                             .senderType("AI")
-                            .content(aiReply)
+                            .content(normalizedReply)
                             .timestamp(new java.util.Date())
                             .build();
 
@@ -204,7 +205,7 @@ public class TeamChatWebSocket {
                     finalChatSession.setLastActiveTime(new java.util.Date());
                     mongoTemplate.save(finalChatSession, "chat_sessions");
 
-                    sendAimessageToTeam(teamId, "AI助手: " + aiReply);
+                    sendAimessageToTeam(teamId, normalizedReply);
                 }
             } catch (Exception e) {
                 System.err.println("AI回复生成失败: " + e.getMessage());
@@ -269,7 +270,7 @@ public class TeamChatWebSocket {
             aiMsg.put("type", "AI_MESSAGE");
             aiMsg.put("senderType", "AI");
             aiMsg.put("senderId", "ai_assistant");
-            aiMsg.put("content", message);
+            aiMsg.put("content", normalizeAiMessageContent(message));
             aiMsg.put("timestamp", System.currentTimeMillis());
             String json = objectMapper.writeValueAsString(aiMsg);
 
@@ -285,6 +286,18 @@ public class TeamChatWebSocket {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    static String normalizeAiMessageContent(String message) {
+        if (message == null) {
+            return "";
+        }
+
+        String normalized = message.trim();
+        while (normalized.matches("^(AI助手|AI小智)\\s*[:：].*")) {
+            normalized = normalized.replaceFirst("^(AI助手|AI小智)\\s*[:：]\\s*", "").trim();
+        }
+        return normalized;
     }
 
     // 用于反序列化前端发送的消息

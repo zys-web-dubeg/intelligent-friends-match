@@ -22,7 +22,7 @@ public class TeamAIController {
         String aiReply = teamChatAssistant.generateTeamReply(teamId, userId, request.getMessage());
         
         // 将AI回复通过WebSocket发送到团队
-        TeamChatWebSocket.sendAimessageToTeam(teamId, "AI助手: " + aiReply);
+        TeamChatWebSocket.sendAimessageToTeam(teamId, aiReply);
         
         return aiReply;
     }
@@ -39,7 +39,7 @@ public class TeamAIController {
         }
         
         // 将AI问候通过WebSocket发送到团队
-        TeamChatWebSocket.sendAimessageToTeam(teamId, "AI助手: " + aiReply);
+        TeamChatWebSocket.sendAimessageToTeam(teamId, aiReply);
         
         return aiReply;
     }

@@ -68,7 +68,7 @@ public class TeamChatController {
             mongoTemplate.save(chatSession, "chat_sessions");
 
             // 通过WebSocket向队伍广播AI的回复
-            TeamChatWebSocket.sendAimessageToTeam(teamId, "AI小智: " + aiResponse);
+            TeamChatWebSocket.sendAimessageToTeam(teamId, aiResponse);
 
             return Result.ok(aiResponse);
         } catch (Exception e) {
