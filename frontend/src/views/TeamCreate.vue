@@ -37,28 +37,23 @@
         </el-form-item>
 
         <el-form-item label="访问级别" prop="accessLevel">
-          <el-radio-group v-model="form.accessLevel" class="radio-group">
-            <el-radio :value="0" class="radio-item">
-              <div class="radio-icon public"><i class="fa-solid fa-globe"></i></div>
-              <div class="radio-text">
-                <div class="radio-label">公开</div>
-                <div class="radio-desc">任何人可加入</div>
-              </div>
-            </el-radio>
-            <el-radio :value="1" class="radio-item">
-              <div class="radio-icon review"><i class="fa-solid fa-shield-check"></i></div>
-              <div class="radio-text">
-                <div class="radio-label">审核</div>
-                <div class="radio-desc">需审核加入</div>
-              </div>
-            </el-radio>
-            <el-radio :value="2" class="radio-item">
-              <div class="radio-icon private"><i class="fa-solid fa-lock"></i></div>
-              <div class="radio-text">
-                <div class="radio-label">私有</div>
-                <div class="radio-desc">仅邀请可加入</div>
-              </div>
-            </el-radio>
+          <el-radio-group v-model="form.accessLevel" class="access-options">
+            <el-radio-button
+              v-for="option in accessOptions"
+              :key="option.value"
+              :value="option.value"
+              class="access-option"
+            >
+              <span class="access-option-inner">
+                <span :class="['access-icon', option.className]">
+                  <i :class="option.icon"></i>
+                </span>
+                <span class="access-copy">
+                  <span class="access-title">{{ option.label }}</span>
+                  <span class="access-desc">{{ option.desc }}</span>
+                </span>
+              </span>
+            </el-radio-button>
           </el-radio-group>
         </el-form-item>
 
@@ -114,6 +109,30 @@ const form = reactive({
   pineconeVectorId: ''
 })
 
+const accessOptions = [
+  {
+    value: 0,
+    label: '公开',
+    desc: '任何人可加入',
+    icon: 'fa-solid fa-globe',
+    className: 'public'
+  },
+  {
+    value: 1,
+    label: '审核',
+    desc: '需审核加入',
+    icon: 'fa-solid fa-shield-halved',
+    className: 'review'
+  },
+  {
+    value: 2,
+    label: '私有',
+    desc: '仅邀请可加入',
+    icon: 'fa-solid fa-lock',
+    className: 'private'
+  }
+]
+
 const rules = {
   name: [
     { required: true, message: '请输入队伍名称', trigger: 'blur' },
@@ -151,8 +170,16 @@ const handleSubmit = async () => {
 <style scoped>
 .team-create-page {
   padding: 24px;
-  max-width: 600px;
-  margin: 0 auto;
+  min-height: 100vh;
+  background: #0f172a;
+  color: #f1f5f9;
+}
+
+.page-header,
+.form-card {
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* 页面头部 */
@@ -230,20 +257,19 @@ const handleSubmit = async () => {
 }
 
 /* 表单样式 */
-.team-form {
-  .el-form-item {
-    margin-bottom: 24px;
-  }
+:deep(.team-form .el-form-item) {
+  margin-bottom: 24px;
+}
 
-  .el-form-item__label {
-    color: #94a3b8;
-    font-weight: 500;
-  }
+:deep(.team-form .el-form-item__label) {
+  color: #94a3b8;
+  font-weight: 600;
 }
 
 /* 输入框包装器 */
 .input-wrapper {
   position: relative;
+  width: 100%;
 }
 
 .input-icon {
@@ -254,6 +280,7 @@ const handleSubmit = async () => {
   color: #64748b;
   font-size: 15px;
   z-index: 1;
+  pointer-events: none;
 }
 
 :deep(.form-input .el-input__wrapper) {
@@ -264,7 +291,7 @@ const handleSubmit = async () => {
   transition: all 0.3s ease;
 }
 
-:deep(.form-input .el-input__wrapper:focus) {
+:deep(.form-input .el-input__wrapper.is-focus) {
   border-color: #0ea5e9;
   box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2);
 }
@@ -278,39 +305,78 @@ const handleSubmit = async () => {
   color: #64748b;
 }
 
+:deep(.form-input .el-textarea__inner) {
+  min-height: 96px !important;
+  padding: 12px 14px 12px 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+  color: #f1f5f9;
+  resize: vertical;
+  transition: all 0.3s ease;
+}
+
+:deep(.form-input .el-textarea__inner:focus) {
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2);
+}
+
+:deep(.form-input .el-textarea__inner::placeholder) {
+  color: #64748b;
+}
+
 /* 单选框组 */
-.radio-group {
-  display: flex;
-  flex-direction: column;
+.access-options {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
-:deep(.radio-item) {
+:deep(.access-option) {
+  height: auto;
+}
+
+:deep(.access-option .el-radio-button__inner) {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: none;
+  color: inherit;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+:deep(.access-option:first-child .el-radio-button__inner),
+:deep(.access-option:last-child .el-radio-button__inner) {
+  border-radius: 12px;
+}
+
+:deep(.access-option .el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  background: rgba(14, 165, 233, 0.12);
+  border-color: rgba(14, 165, 233, 0.45);
+  box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.25);
+}
+
+:deep(.access-option .el-radio-button__inner:hover) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(14, 165, 233, 0.3);
+}
+
+.access-option-inner {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  transition: all 0.3s ease;
+  min-height: 82px;
+  text-align: left;
 }
 
-:deep(.radio-item:hover) {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(14, 165, 233, 0.2);
-}
-
-:deep(.radio-item.is-checked) {
-  background: rgba(14, 165, 233, 0.1);
-  border-color: rgba(14, 165, 233, 0.4);
-}
-
-:deep(.radio-item .el-radio__input) {
-  display: none;
-}
-
-.radio-icon {
+.access-icon {
   width: 36px;
   height: 36px;
   border-radius: 10px;
@@ -318,45 +384,55 @@ const handleSubmit = async () => {
   align-items: center;
   justify-content: center;
   font-size: 16px;
+  flex-shrink: 0;
 }
 
-.radio-icon.public {
+.access-icon.public {
   background: rgba(34, 197, 94, 0.15);
   color: #22c55e;
 }
 
-.radio-icon.review {
+.access-icon.review {
   background: rgba(245, 158, 11, 0.15);
   color: #f59e0b;
 }
 
-.radio-icon.private {
+.access-icon.private {
   background: rgba(239, 68, 68, 0.15);
   color: #ef4444;
 }
 
-.radio-text {
+.access-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   flex: 1;
+  min-width: 0;
 }
 
-.radio-label {
+.access-title {
   font-size: 15px;
   font-weight: 600;
   color: #f1f5f9;
+  line-height: 1.2;
 }
 
-.radio-desc {
+.access-desc {
   font-size: 12px;
   color: #64748b;
+  line-height: 1.4;
 }
 
 /* 表单操作按钮 */
 .form-actions {
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+:deep(.form-actions .el-form-item__content) {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .submit-btn {
@@ -391,5 +467,50 @@ const handleSubmit = async () => {
 .cancel-btn:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #f1f5f9;
+}
+
+@media (max-width: 900px) {
+  .access-options {
+    grid-template-columns: 1fr;
+  }
+
+  .team-create-page {
+    padding: 16px;
+  }
+
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .form-card {
+    padding: 24px 18px;
+  }
+
+  :deep(.team-form .el-form-item) {
+    display: block;
+  }
+
+  :deep(.team-form .el-form-item__label) {
+    justify-content: flex-start;
+    width: auto !important;
+    margin-bottom: 8px;
+  }
+
+  :deep(.team-form .el-form-item__content) {
+    margin-left: 0 !important;
+  }
+
+  :deep(.form-actions .el-form-item__content) {
+    flex-direction: column;
+  }
+
+  .submit-btn,
+  .cancel-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>
